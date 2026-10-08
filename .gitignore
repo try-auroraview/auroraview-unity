@@ -1,0 +1,16 @@
+build/
+Editor/Plugins/x86_64/*.dll
+Editor/Plugins/x86_64/*.pdb
+Samples~/SceneTools/Library/
+Samples~/SceneTools/Logs/
+Samples~/SceneTools/Temp/
+Samples~/SceneTools/obj/
+Samples~/SceneTools/UserSettings/
+Samples~/SceneTools/ProjectSettings/*
+!Samples~/SceneTools/ProjectSettings/ProjectVersion.txt
+Samples~/SceneTools/Packages/packages-lock.json
+Samples~/SceneTools/Assets/*.meta
+*.csproj
+*.sln
+*.suo
+.DS_Store

@@ -1,0 +1,13 @@
+#pragma once
+#include <string>
+inline std::wstring BridgeScript() {
+  std::wstring script = LR"AURORAVIEW(
+if (window.top === window.self) {
+  window.ipc = { postMessage: message => window.chrome.webview.postMessage(message) };
+)AURORAVIEW";
+@BRIDGE_CHUNKS@
+  script.append(LR"AURORAVIEW(
+}
+)AURORAVIEW");
+  return script;
+}

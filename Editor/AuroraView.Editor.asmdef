@@ -1,0 +1,6 @@
+{
+  "name": "AuroraView.Editor",
+  "rootNamespace": "AuroraView.Unity",
+  "includePlatforms": ["Editor"],
+  "autoReferenced": true
+}

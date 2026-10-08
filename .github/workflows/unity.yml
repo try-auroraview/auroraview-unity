@@ -1,0 +1,19 @@
+name: Licensed Unity acceptance
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  unity-editor:
+    # An organization-managed runner with an already licensed Editor is required.
+    runs-on: [self-hosted, Windows, unity-editor]
+    steps:
+      - uses: actions/checkout@v7
+      - run: vx just build
+      - run: vx just test-unity
+      - run: vx just accept-unity
+      - run: vx just accept-agent
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: unity-editor-evidence
+          path: build/evidence/

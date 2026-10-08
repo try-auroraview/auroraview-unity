@@ -1,0 +1,7 @@
+{
+  "name": "AuroraView.Editor.Tests",
+  "references": ["AuroraView.Editor"],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "autoReferenced": false
+}

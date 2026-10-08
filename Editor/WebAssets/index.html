@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>AuroraView · Unity Scene Tools</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header>
+      <span class="brand" aria-label="AuroraView"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 25 13 7l5 9 4-7 8 16h-7l-6-11-6 11Z" fill="currentColor"/></svg>AuroraView</span>
+      <span class="label">UNITY EDITOR</span>
+    </header>
+    <section class="intro">
+      <p class="eyebrow">WEB UI. REAL SCENE CONTEXT.</p>
+      <h1>Your scene,<br><span>one clear interface.</span></h1>
+      <p>Create and select scene objects through explicit Unity main-thread contracts. The same methods can serve an agent when you enable the local endpoint.</p>
+      <p id="status" class="status" role="status">Connecting to the native Editor panel…</p>
+    </section>
+    <section class="card" aria-labelledby="create-title">
+      <div class="card-heading"><h2 id="create-title">Make something tangible</h2><span class="tag">UNDO SUPPORTED</span></div>
+      <label for="cube-name">Cube name</label>
+      <div class="input-row"><input id="cube-name" maxlength="80" value="AuroraView Cube" autocomplete="off"><button id="create" disabled>Create cube <span aria-hidden="true">↗</span></button></div>
+      <p class="hint">Creates a real GameObject in the active scene. Use Unity’s Undo to remove it.</p>
+    </section>
+    <section class="card" aria-labelledby="context-title">
+      <div class="card-heading"><h2 id="context-title">Live scene context</h2><button id="refresh" class="quiet" disabled>Refresh</button></div>
+      <dl class="metrics"><div><dt>Scene</dt><dd id="scene">—</dd></div><div><dt>Unity</dt><dd id="version">—</dd></div><div><dt>Main thread</dt><dd id="thread">—</dd></div></dl>
+      <h3>Selected objects</h3><ul id="selection"><li class="empty">No scene context received yet.</li></ul>
+    </section>
+    <details class="card"><summary>How the human and agent paths meet</summary><p>The page calls <code>scene.context</code>, <code>scene.create_cube</code> and <code>scene.select</code>. The opt-in MCP adapter registers those three methods as tools. UI controls do not automatically become agent tools.</p><p>Enable <strong>Window → AuroraView → Enable Agent Endpoint</strong> in Unity, then configure <code>agent/server.mjs --pid &lt;EditorPID&gt;</code>. The endpoint stays off until explicitly enabled each session.</p></details>
+    <section aria-labelledby="activity-title"><h2 id="activity-title" class="activity-title">ACTIVITY</h2><ol id="activity" aria-live="polite"></ol></section>
+    <footer><span>Native WebView2 · AuroraView bridge · Unity main thread</span><span>Windows Editor preview</span></footer>
+  </main>
+</body>
+</html>

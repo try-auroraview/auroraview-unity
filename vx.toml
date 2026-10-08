@@ -1,0 +1,9 @@
+[tools]
+just = "latest"
+node = "22"
+cmake = "3.31"
+
+[scripts]
+check = "just check"
+build = "just build"
+test = "just test"

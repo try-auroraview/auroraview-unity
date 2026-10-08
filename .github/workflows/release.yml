@@ -1,0 +1,22 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: loonghao/vx@6948178844826716e636b474ab322dd8dc115578
+        with:
+          version: '0.9.35'
+          tools: 'just node@22 cmake@3.31 gh'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: vx just test
+      - run: vx just package
+      - name: Publish native package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: vx gh release create ${{ github.ref_name }} build/package/*.zip --title "AuroraView Unity ${{ github.ref_name }}" --notes-file docs/release-notes.md --verify-tag
