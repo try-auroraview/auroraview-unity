@@ -58,7 +58,7 @@ namespace AuroraView.Unity.Tests
                     AgentEndpoint.Enable();
                     var deadline = DateTime.UtcNow.AddSeconds(3);
                     while (!AgentEndpoint.IsListening && DateTime.UtcNow < deadline) Thread.Sleep(10);
-                    Assert.IsTrue(AgentEndpoint.IsListening, "The current-user named pipe did not start.");
+                    Assert.IsTrue(AgentEndpoint.IsListening, "The current-user named pipe did not start: " + AgentEndpoint.LastError);
                 }
                 finally { AgentEndpoint.Disable(); }
                 Assert.IsFalse(AgentEndpoint.Enabled, "Owned transport worker did not exit.");

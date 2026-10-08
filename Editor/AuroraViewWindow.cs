@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 using UnityEditor;
-using UnityEditor.PackageManager;
+using PackageInfo = UnityEditor.PackageManager.PackageInfo;
 using UnityEngine;
 
 namespace AuroraView.Unity

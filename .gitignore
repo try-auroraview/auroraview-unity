@@ -1,4 +1,5 @@
 build/
+build.meta
 Editor/Plugins/x86_64/*.dll
 Editor/Plugins/x86_64/*.pdb
 Samples~/SceneTools/Library/

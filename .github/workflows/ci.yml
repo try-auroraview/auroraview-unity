@@ -19,5 +19,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: auroraview-unity-windows-x64
-          path: build/package/*.zip
+          path: |
+            build/package/*.zip
+            build/package/*.sha256
           if-no-files-found: error

@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.meta whitespace=-blank-at-eol
+
+# This file is verified against the upstream source digest. Preserve its bytes.
+Editor/WebAssets/vendor/event_bridge.js -text
+*.dll -text
+*.zip -text

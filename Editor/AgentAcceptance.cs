@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 using UnityEditor;
-using UnityEditor.PackageManager;
+using PackageInfo = UnityEditor.PackageManager.PackageInfo;
 using UnityEngine;
 
 namespace AuroraView.Unity
@@ -20,6 +20,7 @@ namespace AuroraView.Unity
             public bool selectionReadback;
             public bool unityObjectReadback;
             public bool undoVerified;
+            public bool endpointStopped;
         }
         private static string output;
         private static double deadline;
@@ -59,9 +60,10 @@ namespace AuroraView.Unity
                 Selection.activeGameObject == item && receipt.mainThreadId == SceneContracts.MainThreadId;
             Undo.PerformUndo();
             receipt.undoVerified = EditorUtility.InstanceIDToObject(receipt.objectId) == null;
-            File.WriteAllText(Path.Combine(output, "unity-agent-acceptance.json"), JsonUtility.ToJson(receipt, true));
             AgentEndpoint.Disable();
-            EditorApplication.Exit(receipt.mcpContext && receipt.mcpCreate && receipt.mcpSelect && receipt.selectionReadback && receipt.unityObjectReadback && receipt.undoVerified ? 0 : 1);
+            receipt.endpointStopped = !AgentEndpoint.Enabled && !AgentEndpoint.IsListening;
+            File.WriteAllText(Path.Combine(output, "unity-agent-acceptance.json"), JsonUtility.ToJson(receipt, true));
+            EditorApplication.Exit(receipt.mcpContext && receipt.mcpCreate && receipt.mcpSelect && receipt.selectionReadback && receipt.unityObjectReadback && receipt.undoVerified && receipt.endpointStopped ? 0 : 1);
         }
     }
 }

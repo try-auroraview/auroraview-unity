@@ -15,7 +15,7 @@ Requirements: Windows x64, Unity 2022.3 LTS or newer, and the [Microsoft Edge We
 3. Enter a cube name and select **Create cube**. The GameObject appears in Unity's Hierarchy and becomes selected. Press Unity's Undo shortcut to remove it.
 4. Select another scene object in Unity. The panel's live context updates through `window.auroraview.trigger('scene.selection', context)`.
 
-Until a release asset is published, build the native plugin from source below. A Git-only UPM install does not contain the generated DLL. A missing DLL is reported in the panel rather than replaced with simulated content.
+For a Git-only UPM install, build the native plugin from source below: the source repository does not contain the generated DLL. A missing DLL is reported in the panel rather than replaced with simulated content. Release ZIPs include a SHA256 file for download verification.
 
 ## Build and test from source
 

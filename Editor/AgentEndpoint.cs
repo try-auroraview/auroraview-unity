@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.IO;
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using Microsoft.Win32.SafeHandles;
 using UnityEditor;
 using UnityEngine;
 
@@ -27,9 +30,25 @@ namespace AuroraView.Unity
         private static volatile bool stopping;
         private static volatile bool listening;
         private static string transportError;
+        private static string lastError;
         public static bool Enabled => worker != null;
         public static bool IsListening => listening;
+        public static string LastError => lastError;
         public static string PipeName => "auroraview-unity-" + System.Diagnostics.Process.GetCurrentProcess().Id;
+
+        [DllImport("auroraview_unity", CallingConvention = CallingConvention.Cdecl)]
+        private static extern IntPtr av_pipe_create(out uint error);
+
+        private static NamedPipeServerStream CreatePipe()
+        {
+            // Unity Mono does not implement PipeSecurity. Win32 creates the
+            // protected current-user ACL; the stream takes ownership of its handle.
+            var raw = av_pipe_create(out var error);
+            if (raw == IntPtr.Zero || raw == new IntPtr(-1)) throw new Win32Exception((int)error);
+            var handle = new SafePipeHandle(raw, true);
+            try { return new NamedPipeServerStream(PipeDirection.InOut, true, false, handle); }
+            catch { handle.Dispose(); throw; }
+        }
 
         static AgentEndpoint()
         {
@@ -46,6 +65,8 @@ namespace AuroraView.Unity
             {
                 if (Enabled) return;
                 stopping = false;
+                transportError = null;
+                lastError = null;
                 worker = new Thread(Listen) { IsBackground = true, Name = "AuroraView agent transport" };
                 worker.Start();
             }
@@ -67,7 +88,7 @@ namespace AuroraView.Unity
             }
             connection?.Dispose();
             if (previous != null && !previous.Join(2000))
-            { transportError = "Transport shutdown is still pending; disable again before enabling another endpoint."; return; }
+            { RecordError("Transport shutdown is still pending; disable again before enabling another endpoint."); return; }
             lock (Lifecycle) { worker = null; pipe = null; }
         }
         private static void Tick()
@@ -77,20 +98,18 @@ namespace AuroraView.Unity
             for (var count = 0; count < 16 && Requests.TryDequeue(out var request); count++)
             { if (!stopping && !request.cancelled) request.response = SceneContracts.Dispatch(request.request); request.ready.Set(); }
         }
+        private static void RecordError(string error)
+        {
+            lastError = error;
+            transportError = error;
+        }
         private static void Listen()
         {
             while (!stopping)
             {
                 try
                 {
-                    // PipeOptions.CurrentUserOnly is unavailable in Unity's .NET Standard 2.1.
-                    // Apply an explicit Windows ACL for the current user's SID instead.
-                    var security = new System.IO.Pipes.PipeSecurity();
-                    var sid = System.Security.Principal.WindowsIdentity.GetCurrent().User;
-                    security.SetAccessRuleProtection(true, false);
-                    security.AddAccessRule(new PipeAccessRule(sid, PipeAccessRights.FullControl, System.Security.AccessControl.AccessControlType.Allow));
-                    using (var server = new NamedPipeServerStream(PipeName, PipeDirection.InOut, 1,
-                        PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 65536, 65536, security))
+                    using (var server = CreatePipe())
                     {
                         lock (Lifecycle)
                         { if (stopping) break; pipe = server; listening = true; }
@@ -109,7 +128,7 @@ namespace AuroraView.Unity
                     }
                     listening = false;
                 }
-                catch (Exception error) { listening = false; if (!stopping) { transportError = error.Message; Thread.Sleep(100); } }
+                catch (Exception error) { listening = false; if (!stopping) { RecordError(error.ToString()); Thread.Sleep(100); } }
             }
         }
         private static string ReadBoundedLine(StreamReader reader)

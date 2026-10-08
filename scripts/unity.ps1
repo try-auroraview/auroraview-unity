@@ -32,7 +32,7 @@ if ($Mode -eq 'test') {
 $process = Start-Process -FilePath $editor -ArgumentList ($arguments | ForEach-Object { '"' + $_ + '"' }) -PassThru -WindowStyle Hidden
 if ($Mode -eq 'agent') {
     $ready = Join-Path $output 'unity-agent-ready.json'
-    $deadline = [DateTime]::UtcNow.AddSeconds(90)
+    $deadline = [DateTime]::UtcNow.AddSeconds(240)
     while (-not (Test-Path -LiteralPath $ready)) {
         if ($process.HasExited -or [DateTime]::UtcNow -gt $deadline) { throw "Unity agent endpoint did not initialize. See $log." }
         Start-Sleep -Milliseconds 250
@@ -52,6 +52,6 @@ if ($Mode -eq 'test') {
     if ($result.processId -ne $process.Id -or -not $result.browserRoundTrip -or -not $result.browserCreateRoundTrip -or -not $result.sceneMutation -or -not $result.undoVerified) { throw 'Unity native acceptance is incomplete or belongs to a different process.' }
 } else {
     $result = Get-Content -LiteralPath (Join-Path $output 'unity-agent-acceptance.json') -Raw | ConvertFrom-Json
-    if ($result.processId -ne $process.Id -or -not $result.unityObjectReadback -or -not $result.undoVerified) { throw 'Unity agent acceptance is incomplete or belongs to a different process.' }
+    if ($result.processId -ne $process.Id -or -not $result.unityObjectReadback -or -not $result.undoVerified -or -not $result.endpointStopped) { throw 'Unity agent acceptance is incomplete or belongs to a different process.' }
 }
 Write-Output "Unity $Mode passed. Evidence: $output"

@@ -13,3 +13,6 @@ AV_API int __cdecl av_poll(uint32_t handle, wchar_t* text, int capacity);
 AV_API int __cdecl av_error(uint32_t handle, wchar_t* text, int capacity);
 AV_API int __cdecl av_eval(uint32_t handle, const wchar_t* script);
 AV_API void __cdecl av_destroy(uint32_t handle);
+// Creates this process's opt-in endpoint with a protected current-user DACL.
+// The caller owns the returned handle. INVALID_HANDLE_VALUE reports *error.
+AV_API HANDLE __cdecl av_pipe_create(DWORD* error);

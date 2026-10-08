@@ -15,7 +15,7 @@ Scene Tools 示例可以创建真实立方体、读取场景与选择、选择�
 3. 输入名称，点击 **Create cube**。Unity Hierarchy 中应出现并选中真实 GameObject；使用 Unity Undo 删除它。
 4. 在 Unity 中选择其他对象，面板显示的选择与宿主上下文随之更新。
 
-Git UPM 源码不包含生成的原生 DLL，不能把仅添加 Git URL 当成完整安装。
+Git UPM 源码不包含生成的原生 DLL，添加 Git URL 后仍须构建原生插件。Release ZIP 同时提供 SHA256 文件，便于核对下载内容。
 
 ## 构建和验证
 

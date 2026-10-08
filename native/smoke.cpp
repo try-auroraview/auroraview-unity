@@ -1,11 +1,55 @@
 #define AURORAVIEW_IMPORT
 #include "view.h"
+#include <aclapi.h>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <vector>
+
+bool CheckPipeAcl() {
+    DWORD error = ERROR_SUCCESS;
+    const auto pipe = av_pipe_create(&error);
+    if (pipe == INVALID_HANDLE_VALUE || error != ERROR_SUCCESS) return false;
+    PSID owner = nullptr;
+    PACL dacl = nullptr;
+    PSECURITY_DESCRIPTOR descriptor = nullptr;
+    const auto security_error = GetSecurityInfo(pipe, SE_KERNEL_OBJECT,
+        OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+        &owner, nullptr, &dacl, nullptr, &descriptor);
+    SECURITY_DESCRIPTOR_CONTROL control = 0;
+    DWORD revision = 0;
+    void* raw_ace = nullptr;
+    HANDLE token = nullptr;
+    DWORD size = 0;
+    bool valid = security_error == ERROR_SUCCESS && descriptor && dacl && dacl->AceCount == 1 &&
+        GetSecurityDescriptorControl(descriptor, &control, &revision) && (control & SE_DACL_PROTECTED) &&
+        GetAce(dacl, 0, &raw_ace) && OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token);
+    if (valid) {
+        GetTokenInformation(token, TokenUser, nullptr, 0, &size);
+        std::vector<BYTE> user(size);
+        auto* ace = static_cast<ACCESS_ALLOWED_ACE*>(raw_ace);
+        valid = size && GetTokenInformation(token, TokenUser, user.data(), size, &size) &&
+            ace->Header.AceType == ACCESS_ALLOWED_ACE_TYPE && ace->Header.AceFlags == 0 &&
+            ((ace->Mask & GENERIC_ALL) || (ace->Mask & FILE_ALL_ACCESS) == FILE_ALL_ACCESS) &&
+            EqualSid(owner, reinterpret_cast<TOKEN_USER*>(user.data())->User.Sid) &&
+            EqualSid(&ace->SidStart, owner);
+    }
+    if (token) CloseHandle(token);
+    if (descriptor) LocalFree(descriptor);
+    const auto duplicate = av_pipe_create(&error);
+    valid = valid && duplicate == INVALID_HANDLE_VALUE && error != ERROR_SUCCESS;
+    if (duplicate != INVALID_HANDLE_VALUE) CloseHandle(duplicate);
+    CloseHandle(pipe);
+    const auto reopened = av_pipe_create(&error);
+    valid = valid && reopened != INVALID_HANDLE_VALUE && error == ERROR_SUCCESS;
+    if (reopened != INVALID_HANDLE_VALUE) CloseHandle(reopened);
+    if (!valid) std::cerr << "FAIL: current-user pipe DACL or close/reopen\n";
+    return valid;
+}
 
 int wmain() {
+    if (!CheckPipeAcl()) return 1;
     const auto directory = std::filesystem::temp_directory_path() / (L"auroraview-unity-test-" + std::to_wstring(GetCurrentProcessId()));
     std::filesystem::create_directories(directory);
     const auto file = directory / L"index.html";
@@ -37,6 +81,6 @@ int wmain() {
     const bool destroyed = !IsWindow(child);
     DestroyWindow(parent);
     if (!received || !evaluated || !embedded || !destroyed || av_state(view) != -1) return 1;
-    std::cout << "PASS: real WebView2 child HWND, upstream bridge, inbound/outbound IPC, STA shutdown\n";
+    std::cout << "PASS: current-user pipe DACL, exclusive creation, close/reopen, real WebView2 child HWND, upstream bridge, inbound/outbound IPC, STA shutdown\n";
     return 0;
 }
