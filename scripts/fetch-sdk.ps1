@@ -21,9 +21,10 @@ $url = "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/$version/m
 $package = Join-Path $directory "microsoft.web.webview2.$version.nupkg"
 Invoke-WebRequest -Uri $url -OutFile $package
 if ($catalog.packageHashAlgorithm -eq 'SHA512' -and $catalog.packageHash) {
-    $hash = (Get-FileHash -LiteralPath $package -Algorithm SHA512).Hash
-    $bytes = New-Object byte[] ($hash.Length / 2)
-    for ($index = 0; $index -lt $bytes.Length; $index++) { $bytes[$index] = [Convert]::ToByte($hash.Substring($index * 2, 2), 16) }
+    $stream = [IO.File]::OpenRead($package)
+    $algorithm = [Security.Cryptography.SHA512]::Create()
+    try { $bytes = $algorithm.ComputeHash($stream) }
+    finally { $algorithm.Dispose(); $stream.Dispose() }
     if ([Convert]::ToBase64String($bytes) -cne $catalog.packageHash) { throw 'WebView2 SDK does not match the publisher catalog SHA512.' }
     $verification = 'NuGet catalog SHA512'
 } else {
