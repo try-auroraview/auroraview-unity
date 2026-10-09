@@ -29,7 +29,7 @@ namespace AuroraView.Unity
         {
             var package = PackageInfo.FindForAssembly(typeof(AgentAcceptance).Assembly);
             output = Environment.GetEnvironmentVariable("AURORAVIEW_UNITY_EVIDENCE_DIR");
-            if (string.IsNullOrEmpty(output)) output = Path.Combine(package.resolvedPath, "build/evidence");
+            if (string.IsNullOrEmpty(output)) output = Path.Combine(package.resolvedPath, "build~/evidence");
             Directory.CreateDirectory(output);
             AgentEndpoint.Enable();
             deadline = EditorApplication.timeSinceStartup + 90;

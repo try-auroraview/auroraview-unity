@@ -63,7 +63,7 @@ namespace AuroraView.Unity
                 }
             }
             var package = PackageInfo.FindForAssembly(typeof(Acceptance).Assembly);
-            var output = Path.Combine(package.resolvedPath, "build/evidence");
+            var output = Path.Combine(package.resolvedPath, "build~/evidence");
             Directory.CreateDirectory(output);
             File.WriteAllText(Path.Combine(output, "unity-acceptance.json"), JsonUtility.ToJson(receipt, true));
             window.Close();

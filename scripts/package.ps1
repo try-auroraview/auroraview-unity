@@ -1,12 +1,12 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$output = Join-Path $root 'build/package'
+$output = Join-Path $root 'build~/package'
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 $files = @('package.json','Editor','agent','docs','README.md','README.zh-CN.md','LICENSE','THIRD_PARTY.md')
 $stage = Join-Path $output 'com.auroraview.unity'
 if (Test-Path -LiteralPath $stage) {
     $resolvedStage = [IO.Path]::GetFullPath($stage)
-    $expectedStage = [IO.Path]::GetFullPath((Join-Path $root 'build/package/com.auroraview.unity'))
+    $expectedStage = [IO.Path]::GetFullPath((Join-Path $root 'build~/package/com.auroraview.unity'))
     if ($resolvedStage -ne $expectedStage) { throw 'Package stage is outside the expected build directory.' }
     Remove-Item -LiteralPath $resolvedStage -Recurse -Force
 }
@@ -25,7 +25,7 @@ function Copy-PackageItem([string]$Source, [string]$Destination) {
     }
 }
 foreach ($file in $files) { Copy-PackageItem (Join-Path $root $file) (Join-Path $stage $file) }
-$sdkLicense = Join-Path $root 'build/deps/webview2/LICENSE.txt'
+$sdkLicense = Join-Path $root 'build~/deps/webview2/LICENSE.txt'
 if (-not (Test-Path -LiteralPath $sdkLicense)) { throw 'Verified WebView2 SDK license is missing.' }
 Copy-Item -LiteralPath $sdkLicense -Destination (Join-Path $stage 'WEBVIEW2-LICENSE.txt')
 $archive = Join-Path $output 'auroraview-unity-0.1.0.zip'

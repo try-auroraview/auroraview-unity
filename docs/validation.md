@@ -28,7 +28,9 @@ Local verification on 2026-10-09 passed the extended native smoke: current-user 
 
 The initial published CI run found a changed bridge digest because Windows checkout converted its line endings. `.gitattributes` now disables text conversion for the vendored bridge. Its unchanged local SHA256 remains `4550b027e400c6500fca5e64dd8c50348bde15848c513d2738dd6e443b4a17ff`; CI must verify the same bytes after checkout.
 
-`test-unity` emits `build/evidence/editmode.xml` and a Unity log. `accept-unity` launches a non-batch Editor project and emits `build/evidence/unity-acceptance.json`, including Editor version, PID, main-thread ID, native parent HWND, browser round trip, scene mutation and Undo. It returns failure if required fields do not pass. It does not certify visual docking, performance, multi-monitor input or DCC-MCP registry integration.
+Generated outputs use `build~/`: Unity [ignores folders ending in `~`](https://docs.unity3d.com/2022.3/Documentation/Manual/cus-layout.html) in a package. This keeps native build products and the expanded release package out of the local package's import tree. Existing `build/` output from older revisions must be moved outside the package while the Editor is closed before reopening that checkout; recipes preserve it rather than deleting it automatically.
+
+`test-unity` emits `build~/evidence/editmode.xml` and a Unity log. `accept-unity` launches a non-batch Editor project and emits `build~/evidence/unity-acceptance.json`, including Editor version, PID, main-thread ID, native parent HWND, browser round trip, scene mutation and Undo. It returns failure if required fields do not pass. It does not certify visual docking, performance, multi-monitor input or DCC-MCP registry integration.
 
 The 2026-10-09 non-batch `accept-unity` attempt exceeded the four-minute startup deadline. The owned Editor had no main-window HWND and produced neither the requested log nor the acceptance JSON. This establishes a startup/acceptance gap, not its cause. The separate native WebView2 smoke and seven passing batch EditMode tests do not close this gate.
 

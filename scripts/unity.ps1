@@ -9,7 +9,7 @@ if (-not $editor) {
 if (-not $editor -or -not (Test-Path -LiteralPath $editor)) { throw 'Set UNITY_EDITOR to an installed licensed Windows Unity 2022.3+ Editor executable.' }
 $project = Join-Path $root 'Samples~/SceneTools'
 $output = $env:AURORAVIEW_UNITY_EVIDENCE_DIR
-if (-not $output) { $output = Join-Path $root 'build/evidence'; if ($Mode -eq 'core') { $output = Join-Path $output 'core' } }
+if (-not $output) { $output = Join-Path $root 'build~/evidence'; if ($Mode -eq 'core') { $output = Join-Path $output 'core' } }
 $env:AURORAVIEW_UNITY_EVIDENCE_DIR = $output
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 $log = Join-Path $output "unity-$Mode.log"
@@ -43,7 +43,7 @@ if ($Mode -in @('agent','core')) {
     if ($process.HasExited -or $receipt.processId -ne $process.Id) { throw 'Agent readiness does not belong to the newly launched live Editor. No mutation was sent.' }
     if ($Mode -eq 'core') {
         $python = $env:AURORAVIEW_CORE_PYTHON
-        if (-not $python) { $python = Join-Path $root 'build/core-venv/Scripts/python.exe' }
+        if (-not $python) { $python = Join-Path $root 'build~/core-venv/Scripts/python.exe' }
         vx uv run --no-project --no-sync -- $python (Join-Path $root 'agent/core_live_test.py') --pid $receipt.processId --node $Node --state-dir (Join-Path $output 'state') --output (Join-Path $output 'mcp-live-result.json')
     } else {
         vx node (Join-Path $root 'agent/live-test.mjs') --pid $receipt.processId --output (Join-Path $output 'mcp-live-result.json')

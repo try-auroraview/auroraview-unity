@@ -16,4 +16,4 @@ jobs:
         if: always()
         with:
           name: unity-editor-evidence
-          path: build/evidence/
+          path: build~/evidence/

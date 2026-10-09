@@ -68,6 +68,6 @@ The JavaScript bridge is an unchanged, attributed copy from AuroraView's core, p
 
 ## Acceptance
 
-[Validation](docs/validation.md) separates source, Node tests, native build, WebView2 runtime, Unity EditMode, browser-to-host round trip, docking/input checks and release publication. Test results and receipts live in `build/evidence/`; they are not claims of performance, platform breadth or native dock interaction acceptance. Never treat a green native build as proof of a working Unity panel.
+[Validation](docs/validation.md) separates source, Node tests, native build, WebView2 runtime, Unity EditMode, browser-to-host round trip, docking/input checks and release publication. Generated outputs live in `build~/`, which Unity ignores when importing the checkout as a local package. Test results and receipts live in `build~/evidence/`; they are not claims of performance, platform breadth or native dock interaction acceptance. Never treat a green native build as proof of a working Unity panel.
 
 MIT. Upstream AuroraView attribution and bridge checksum are in [THIRD_PARTY.md](THIRD_PARTY.md).

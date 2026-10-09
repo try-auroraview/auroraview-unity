@@ -4,7 +4,7 @@ if ($env:AURORAVIEW_CORE_PYTHON) {
     return
 }
 $root = Split-Path -Parent $PSScriptRoot
-$environment = Join-Path $root 'build/core-venv'
+$environment = Join-Path $root 'build~/core-venv'
 vx uv venv --allow-existing --python 3.11 $environment
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 vx uv pip sync --python (Join-Path $environment 'Scripts/python.exe') --require-hashes (Join-Path $root 'agent/requirements-core.txt')
