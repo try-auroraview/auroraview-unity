@@ -11,7 +11,20 @@ if (Test-Path -LiteralPath $stage) {
     Remove-Item -LiteralPath $resolvedStage -Recurse -Force
 }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
-foreach ($file in $files) { Copy-Item -LiteralPath (Join-Path $root $file) -Destination $stage -Recurse -Force }
+function Copy-PackageItem([string]$Source, [string]$Destination) {
+    if (Test-Path -LiteralPath $Source -PathType Container) {
+        if ([IO.Path]::GetFileName($Source) -eq '__pycache__') { return }
+        New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+        foreach ($child in Get-ChildItem -LiteralPath $Source) {
+            Copy-PackageItem $child.FullName (Join-Path $Destination $child.Name)
+        }
+    } else {
+        $name = [IO.Path]::GetFileName($Source)
+        if ($name -eq '__pycache__.meta' -or $name -match '\.py[co](\.meta)?$') { return }
+        Copy-Item -LiteralPath $Source -Destination $Destination -Force
+    }
+}
+foreach ($file in $files) { Copy-PackageItem (Join-Path $root $file) (Join-Path $stage $file) }
 $sdkLicense = Join-Path $root 'build/deps/webview2/LICENSE.txt'
 if (-not (Test-Path -LiteralPath $sdkLicense)) { throw 'Verified WebView2 SDK license is missing.' }
 Copy-Item -LiteralPath $sdkLicense -Destination (Join-Path $stage 'WEBVIEW2-LICENSE.txt')
