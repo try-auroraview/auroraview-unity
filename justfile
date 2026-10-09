@@ -20,6 +20,9 @@ core-env:
 test-core: core-env
     vx uv run --no-project --no-sync -- "{{core_python}}" -m unittest discover -s tests -p test_core.py -v
 
+test-core-service: core-env
+    vx uv run --no-project --no-sync -- "{{core_python}}" -m unittest discover -s tests -p test_core_service.py -v
+
 test-core-http: core-env
     $env:DCC_MCP_DISABLE_DEFAULT_SKILL_PATHS = '1'; $env:DCC_MCP_CHECKPOINT_IN_MEMORY = '1'; vx uv run --no-project --no-sync -- "{{core_python}}" -m unittest discover -s tests -p test_core_http.py -v
 
@@ -41,7 +44,7 @@ accept-agent:
 accept-core node='node': core-env
     powershell.exe -NoProfile -File scripts/unity.ps1 -Mode core -Node "{{node}}"
 
-check: test test-core test-core-http
+check: test test-core test-core-service test-core-http
 
 package: test-native
     powershell.exe -NoProfile -File scripts/package.ps1

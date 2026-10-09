@@ -32,13 +32,23 @@ class CoreService:
     """Own only the explicitly created Python service and Core queue driver."""
 
     def __init__(
-        self, pid, state_dir, *, transport=None, node="node", gateway_port=None
+        self,
+        pid,
+        state_dir,
+        *,
+        transport=None,
+        node="node",
+        gateway_port=None,
+        ui_control=None,
+        skill_root=None,
     ):
         self.pid = pid
         self.state_dir = Path(state_dir).resolve()
         self.transport = transport
         self.node = node
         self.gateway_port = gateway_port
+        self.ui_control = ui_control
+        self.skill_root = Path(skill_root).resolve() if skill_root is not None else None
         self.queue = QueueDispatcher()
         self.driver = StandaloneHost(self.queue, thread_name="auroraview-unity-core")
         self.server = None
@@ -58,9 +68,16 @@ class CoreService:
         return self
 
     def _start(self):
+        skills = self.skill_root
+        if skills is None:
+            skills = self.state_dir / "skills"
+            skills.mkdir(exist_ok=True)
+        elif not skills.is_dir():
+            raise ValueError("The owner-selected skill root must exist")
         self.tools = SceneTools(self.pid, self.transport, node=self.node)
-        skills = self.state_dir / "skills"
-        skills.mkdir(exist_ok=True)
+        # Runtime selection and authority belong to trusted bootstrap. Omitting
+        # this keyword preserves the published Core 0.20.41 constructor path.
+        options = {} if self.ui_control is None else {"ui_control": self.ui_control}
         self.server = DccServerBase(
             DccServerOptions.from_env(
                 "unity",
@@ -81,6 +98,7 @@ class CoreService:
                     default_thread_affinity="main",
                     default_timeout_hint_secs=20,
                 ),
+                **options,
             )
         )
         self.binding = self.tools.attach(self.server)

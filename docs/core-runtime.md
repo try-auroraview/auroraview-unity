@@ -39,8 +39,18 @@ The pipe grants access only to the current Windows user. The consumer probes `sc
 
 The Python transport reuses the existing Node `pipeCall` through a bounded one-shot client. It does not run `agent/server.mjs` as an MCP server. Pipe calls have a 12-second deadline, the Python child has a 14-second deadline and is killed/reaped on timeout. Unity skips queued requests after its 10-second dispatch timeout. Already-running native scene operations cannot be safely preempted; the three operations remain bounded.
 
+## Trusted UI bootstrap
+
+An owner evaluating a Core version that supports `UiControlRuntimeOptions` can supply that typed object through `CoreService(..., ui_control=options, skill_root=canonical_skill_root)`. The owner selects and verifies the runtime executable, hash, exact version and bounded action scope before starting a new service. `skill_root` must be an existing canonical Core skill directory; Core receives it through its public built-in skill discovery argument. On the service's registered execution lane, call `server.skill_discovery.register_builtin_actions(include_bundled=False)` and `server.load_skill("ui-control")` before discovering its tools. Disable default and accumulated skill paths when isolating an evaluation.
+
+Both keywords default to `None`. The normal path retains its private skill directory and omits the `ui_control` keyword when constructing the published Core 0.20.41 options. The current dependency lock is unchanged. The optional pixels runtime contracts require the separately reviewed [Core runtime options](https://github.com/dcc-mcp/dcc-mcp-core/pull/2721) and [foreground preparation](https://github.com/dcc-mcp/dcc-mcp-core/pull/2724); forwarding options does not establish runtime or Editor acceptance.
+
+Runtime selection, grants and skill sources are trusted bootstrap configuration. They are not parameters of scene tools or public UI calls. Keep recording disabled unless an owner explicitly configures its separate grant. Application UI continues through canonical `ui-control`, with a fresh exact PID/HWND binding and cleanup through `stop_computer_use`.
+
+`CoreService` requires an already enabled Unity agent endpoint to attach its scene tools. For an initial application modal before that endpoint exists, use the canonical Core SDK's UI-only bootstrap. Stop its UI task and service before changing the target, then create a fresh binding for the ready Editor and attach its scene tools.
+
 ## Evidence
 
-`vx just test-core` runs offline contracts for explicit methods, input rejection, PID/session checks, stale calls, owner closure and bounded transport. `vx just test-core-http` explicitly starts numeric-loopback Core with a fake Unity transport and verifies MCP discovery, execution lane, borrowed cleanup and owned shutdown. The Node suite also exercises the one-shot client against a controlled local named pipe.
+`vx just test-core` runs offline contracts for explicit methods, input rejection, PID/session checks, stale calls, owner closure and bounded transport. `vx just test-core-service` checks trusted option forwarding and default compatibility with service construction replaced by test doubles; it starts no HTTP service or native task. `vx just test-core-http` explicitly starts numeric-loopback Core with a fake Unity transport and verifies MCP discovery, execution lane, borrowed cleanup and owned shutdown. The Node suite also exercises the one-shot client against a controlled local named pipe.
 
 These checks establish public dependency consumption and transport composition. They do not establish real Editor Core calls, Unity EditMode results for this candidate, WebView round trips, docking, input or high-DPI acceptance. The published `v0.1.0-preview.1` ZIP predates this integration; see the [validation ledger](validation.md) before choosing it for a workflow.
