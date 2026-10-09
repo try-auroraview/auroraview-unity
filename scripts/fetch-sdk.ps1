@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $version = '1.0.3537.50'
 $root = Split-Path -Parent $PSScriptRoot
-$directory = Join-Path $root 'build/deps'
+$directory = Join-Path $root 'build~/deps'
 $destination = Join-Path $directory 'webview2'
 $receipt = Join-Path $destination 'verified.json'
 if (Test-Path -LiteralPath $receipt) {
@@ -34,7 +34,7 @@ if ($catalog.packageHashAlgorithm -eq 'SHA512' -and $catalog.packageHash) {
     $signatureExit = $LASTEXITCODE
     $ErrorActionPreference = $savedErrorAction
     $signature | Set-Content -LiteralPath (Join-Path $directory 'webview2-signature.txt') -Encoding utf8
-    if ($signatureExit -ne 0 -or ($signature -join "`n") -notmatch 'Microsoft Corporation') { throw 'WebView2 SDK requires a valid trusted Microsoft author signature. See build/deps/webview2-signature.txt.' }
+    if ($signatureExit -ne 0 -or ($signature -join "`n") -notmatch 'Microsoft Corporation') { throw 'WebView2 SDK requires a valid trusted Microsoft author signature. See build~/deps/webview2-signature.txt.' }
     $verification = 'Microsoft author signature'
 }
 $archive = Join-Path $directory "microsoft.web.webview2.$version.zip"

@@ -13,6 +13,7 @@ namespace AuroraView.Unity
         public string type;
         public string id;
         public string method;
+        public string sessionId;
         public CallParameters @params;
     }
     [Serializable] public sealed class ObjectInfo
@@ -26,6 +27,7 @@ namespace AuroraView.Unity
     [Serializable] public sealed class HostResult
     {
         public string unityVersion;
+        public string sessionId;
         public string scene;
         public int processId;
         public int mainThreadId;
@@ -40,8 +42,16 @@ namespace AuroraView.Unity
     [InitializeOnLoad]
     public static class SceneContracts
     {
+        public static string SessionId { get; private set; } = Guid.NewGuid().ToString("N");
         public static readonly int MainThreadId = Thread.CurrentThread.ManagedThreadId;
         public static readonly string[] Methods = { "scene.context", "scene.create_cube", "scene.select" };
+
+        internal static void RenewSession()
+        {
+            if (Thread.CurrentThread.ManagedThreadId != MainThreadId)
+                throw new InvalidOperationException("Unity sessions require the Editor main thread.");
+            SessionId = Guid.NewGuid().ToString("N");
+        }
 
         public static string Dispatch(string json)
         {
@@ -54,6 +64,8 @@ namespace AuroraView.Unity
                 request = JsonUtility.FromJson<CallRequest>(json);
                 if (request == null || request.type != "call" || string.IsNullOrEmpty(request.id) || request.id.Length > 128)
                     throw new ArgumentException("Expected a call with a bounded nonempty id.");
+                if (!string.IsNullOrEmpty(request.sessionId) && request.sessionId != SessionId)
+                    throw new InvalidOperationException("Unity session expired; explicitly attach the current Editor session.");
                 var result = Execute(request.method, request.@params ?? new CallParameters());
                 return JsonUtility.ToJson(new CallSuccess { id = request.id, result = result });
             }
@@ -104,6 +116,7 @@ namespace AuroraView.Unity
             return new HostResult
             {
                 unityVersion = Application.unityVersion,
+                sessionId = SessionId,
                 scene = SceneManager.GetActiveScene().name,
                 processId = System.Diagnostics.Process.GetCurrentProcess().Id,
                 mainThreadId = MainThreadId,

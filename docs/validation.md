@@ -6,6 +6,10 @@ This ledger records independent gates. Source availability, native compilation, 
 |---|---|---|
 | Official AuroraView JS bridge interoperability | `vx just test` | Passed locally; 9 Node tests across bridge and MCP |
 | Explicit MCP discovery, mapping and refusal | `vx just test` | Passed locally; preview adapter only |
+| Shared-facade consumer, PID/session rejection, stale calls and timeout bounds | `vx just test-core` | 11 offline tests passed locally against public facade 0.1.0 and Core 0.20.41; fake Unity transport |
+| Core HTTP discovery, queue lane, borrowed cleanup and owned shutdown | `vx just test-core-http` | Passed locally on numeric loopback with public dependencies; fake Unity transport |
+| Core one-shot named-pipe transport | `vx just test` | Passed locally against a controlled current-user local pipe; no Unity process |
+| Core → real Unity session → scene readback/Undo/cleanup | Pending licensed Editor acceptance | Not yet accepted for this candidate |
 | Publisher-verified WebView2 SDK acquisition | `vx just fetch-sdk` | Passed; trusted Microsoft author signature |
 | Windows x64 native DLL | `vx just build` | Passed locally; MSVC 19.44 |
 | Real WebView2 child HWND, IPC and STA close | `vx just test-native` | Passed locally; current-user protected pipe ACL, exclusive creation/reopen, real runtime and clean child HWND shutdown |
@@ -24,7 +28,9 @@ Local verification on 2026-10-09 passed the extended native smoke: current-user 
 
 The initial published CI run found a changed bridge digest because Windows checkout converted its line endings. `.gitattributes` now disables text conversion for the vendored bridge. Its unchanged local SHA256 remains `4550b027e400c6500fca5e64dd8c50348bde15848c513d2738dd6e443b4a17ff`; CI must verify the same bytes after checkout.
 
-`test-unity` emits `build/evidence/editmode.xml` and a Unity log. `accept-unity` launches a non-batch Editor project and emits `build/evidence/unity-acceptance.json`, including Editor version, PID, main-thread ID, native parent HWND, browser round trip, scene mutation and Undo. It returns failure if required fields do not pass. It does not certify visual docking, performance, multi-monitor input or DCC-MCP registry integration.
+Generated outputs use `build~/`: Unity [ignores folders ending in `~`](https://docs.unity3d.com/2022.3/Documentation/Manual/cus-layout.html) in a package. This keeps native build products and the expanded release package out of the local package's import tree. Existing `build/` output from older revisions must be moved outside the package while the Editor is closed before reopening that checkout; recipes preserve it rather than deleting it automatically.
+
+`test-unity` emits `build~/evidence/editmode.xml` and a Unity log. `accept-unity` launches a non-batch Editor project and emits `build~/evidence/unity-acceptance.json`, including Editor version, PID, main-thread ID, native parent HWND, browser round trip, scene mutation and Undo. It returns failure if required fields do not pass. It does not certify visual docking, performance, multi-monitor input or DCC-MCP registry integration.
 
 The 2026-10-09 non-batch `accept-unity` attempt exceeded the four-minute startup deadline. The owned Editor had no main-window HWND and produced neither the requested log nor the acceptance JSON. This establishes a startup/acceptance gap, not its cause. The separate native WebView2 smoke and seven passing batch EditMode tests do not close this gate.
 

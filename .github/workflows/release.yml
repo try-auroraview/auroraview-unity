@@ -19,4 +19,4 @@ jobs:
       - name: Publish native package
         env:
           GH_TOKEN: ${{ github.token }}
-        run: vx gh release create ${{ github.ref_name }} build/package/*.zip build/package/*.sha256 --title "AuroraView Unity ${{ github.ref_name }}" --notes-file docs/release-notes.md --verify-tag --prerelease=${{ contains(github.ref_name, '-') }} --latest=false
+        run: vx gh release create ${{ github.ref_name }} build~/package/*.zip build~/package/*.sha256 --title "AuroraView Unity ${{ github.ref_name }}" --notes-file docs/release-notes.md --verify-tag --prerelease=${{ contains(github.ref_name, '-') }} --latest=false

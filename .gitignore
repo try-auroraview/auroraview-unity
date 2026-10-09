@@ -1,5 +1,6 @@
 build/
 build.meta
+build~/
 Editor/Plugins/x86_64/*.dll
 Editor/Plugins/x86_64/*.pdb
 Samples~/SceneTools/Library/
@@ -15,3 +16,4 @@ Samples~/SceneTools/Assets/*.meta
 *.sln
 *.suo
 .DS_Store
+__pycache__/
