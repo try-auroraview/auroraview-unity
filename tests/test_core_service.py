@@ -36,7 +36,9 @@ class CoreServiceOptionsTests(unittest.TestCase):
                     service._start()
                 self.assertNotIn("ui_control", from_env.call_args.kwargs)
                 self.assertIsNone(service.ui_control)
-                self.assertEqual(from_env.call_args.args[1], Path(state) / "skills")
+                self.assertEqual(
+                    from_env.call_args.args[1], Path(state).resolve() / "skills"
+                )
                 service.driver.start.assert_not_called()
 
     def test_explicit_runtime_options_forward_identity_and_existing_scope(self):
@@ -56,7 +58,9 @@ class CoreServiceOptionsTests(unittest.TestCase):
             self.assertIs(options["ui_control"], runtime_options)
             self.assertEqual(options["dcc_pid"], 1234)
             self.assertEqual(options["gateway_port"], 0)
-            self.assertEqual(options["registry_dir"], str(Path(state) / "registry"))
+            self.assertEqual(
+                Path(options["registry_dir"]), Path(state).resolve() / "registry"
+            )
             self.assertFalse(options["enable_telemetry"])
             self.assertIs(service.transport, transport)
             self.assertEqual(service.node, "owner-selected-node")
