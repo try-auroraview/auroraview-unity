@@ -1,4 +1,4 @@
-param([ValidateSet('test','accept','agent')][string]$Mode = 'test')
+param([ValidateSet('test','accept','agent','core')][string]$Mode = 'test', [string]$Node = 'node')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $editor = $env:UNITY_EDITOR
@@ -8,7 +8,9 @@ if (-not $editor) {
 }
 if (-not $editor -or -not (Test-Path -LiteralPath $editor)) { throw 'Set UNITY_EDITOR to an installed licensed Windows Unity 2022.3+ Editor executable.' }
 $project = Join-Path $root 'Samples~/SceneTools'
-$output = Join-Path $root 'build/evidence'
+$output = $env:AURORAVIEW_UNITY_EVIDENCE_DIR
+if (-not $output) { $output = Join-Path $root 'build/evidence'; if ($Mode -eq 'core') { $output = Join-Path $output 'core' } }
+$env:AURORAVIEW_UNITY_EVIDENCE_DIR = $output
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 $log = Join-Path $output "unity-$Mode.log"
 $arguments = @('-projectPath', $project, '-logFile', $log)
@@ -30,7 +32,7 @@ if ($Mode -eq 'test') {
     $arguments += @('-batchmode', '-executeMethod', 'AuroraView.Unity.AgentAcceptance.Run')
 }
 $process = Start-Process -FilePath $editor -ArgumentList ($arguments | ForEach-Object { '"' + $_ + '"' }) -PassThru -WindowStyle Hidden
-if ($Mode -eq 'agent') {
+if ($Mode -in @('agent','core')) {
     $ready = Join-Path $output 'unity-agent-ready.json'
     $deadline = [DateTime]::UtcNow.AddSeconds(240)
     while (-not (Test-Path -LiteralPath $ready)) {
@@ -39,7 +41,13 @@ if ($Mode -eq 'agent') {
     }
     $receipt = Get-Content -LiteralPath $ready -Raw | ConvertFrom-Json
     if ($process.HasExited -or $receipt.processId -ne $process.Id) { throw 'Agent readiness does not belong to the newly launched live Editor. No mutation was sent.' }
-    vx node (Join-Path $root 'agent/live-test.mjs') --pid $receipt.processId --output (Join-Path $output 'mcp-live-result.json')
+    if ($Mode -eq 'core') {
+        $python = $env:AURORAVIEW_CORE_PYTHON
+        if (-not $python) { $python = Join-Path $root 'build/core-venv/Scripts/python.exe' }
+        vx uv run --no-project --no-sync -- $python (Join-Path $root 'agent/core_live_test.py') --pid $receipt.processId --node $Node --state-dir (Join-Path $output 'state') --output (Join-Path $output 'mcp-live-result.json')
+    } else {
+        vx node (Join-Path $root 'agent/live-test.mjs') --pid $receipt.processId --output (Join-Path $output 'mcp-live-result.json')
+    }
     if ($LASTEXITCODE -ne 0) { throw 'MCP live host acceptance failed.' }
 }
 if (-not $process.WaitForExit(240000)) { throw "Unity exceeded four minutes. Inspect PID $($process.Id) and $log; process is retained for diagnosis." }

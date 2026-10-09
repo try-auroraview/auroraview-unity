@@ -35,7 +35,7 @@ The SDK is pinned to Microsoft.Web.WebView2 1.0.3537.50. The fetch recipe verifi
 
 ## Explicit agent tools — preview example
 
-AuroraView owns rendering, native docking and the frontend bridge. The Node stdio server and local pipe in this repository are an opt-in **preview example**, not an integration with DCC-MCP Core. Production integration will use a thin layer to attach the existing DCC-MCP server, tools, Skills, host execution bridge and lifecycle. The shared Core facade belongs to the DCC-MCP integration work; this package does not introduce a replacement Core API. See [shared runtime boundaries](docs/shared-runtime.md).
+AuroraView owns rendering, native docking and the frontend bridge. The original Node stdio server remains an opt-in **standalone preview example**. This source candidate also includes an [external Python Core consumer](docs/core-runtime.md) using public, hash-pinned `dcc-mcp-core` and `auroraview-dcc-mcp` dependencies. It can borrow an existing service or explicitly create a missing Core service with Core's queue, host execution bridge and lifecycle. It does not embed Python in Unity. Real Editor Core and GUI acceptance remain pending; the published `v0.1.0-preview.1` ZIP predates this candidate. See [shared runtime boundaries](docs/shared-runtime.md).
 
 The UI does not automatically turn controls into tools. This package registers exactly these methods:
 

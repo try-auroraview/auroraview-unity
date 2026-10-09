@@ -6,6 +6,10 @@ This ledger records independent gates. Source availability, native compilation, 
 |---|---|---|
 | Official AuroraView JS bridge interoperability | `vx just test` | Passed locally; 9 Node tests across bridge and MCP |
 | Explicit MCP discovery, mapping and refusal | `vx just test` | Passed locally; preview adapter only |
+| Shared-facade consumer, PID/session rejection, stale calls and timeout bounds | `vx just test-core` | 11 offline tests passed locally against public facade 0.1.0 and Core 0.20.41; fake Unity transport |
+| Core HTTP discovery, queue lane, borrowed cleanup and owned shutdown | `vx just test-core-http` | Passed locally on numeric loopback with public dependencies; fake Unity transport |
+| Core one-shot named-pipe transport | `vx just test` | Passed locally against a controlled current-user local pipe; no Unity process |
+| Core → real Unity session → scene readback/Undo/cleanup | Pending licensed Editor acceptance | Not yet accepted for this candidate |
 | Publisher-verified WebView2 SDK acquisition | `vx just fetch-sdk` | Passed; trusted Microsoft author signature |
 | Windows x64 native DLL | `vx just build` | Passed locally; MSVC 19.44 |
 | Real WebView2 child HWND, IPC and STA close | `vx just test-native` | Passed locally; current-user protected pipe ACL, exclusive creation/reopen, real runtime and clean child HWND shutdown |

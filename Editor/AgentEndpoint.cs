@@ -64,6 +64,7 @@ namespace AuroraView.Unity
             lock (Lifecycle)
             {
                 if (Enabled) return;
+                SceneContracts.RenewSession();
                 stopping = false;
                 transportError = null;
                 lastError = null;

@@ -14,6 +14,26 @@ namespace AuroraView.Unity.Tests
             Assert.IsTrue(result.ok);
             Assert.AreEqual(Application.unityVersion, result.result.unityVersion);
             Assert.AreEqual(Thread.CurrentThread.ManagedThreadId, result.result.mainThreadId);
+            Assert.AreEqual(SceneContracts.SessionId, result.result.sessionId);
+            Assert.AreEqual(32, result.result.sessionId.Length);
+        }
+        [Test] public void ExpiredSessionCannotMutateTheScene()
+        {
+            var name = "AuroraView stale session test";
+            var request = new CallRequest { type = "call", id = "stale", method = "scene.create_cube",
+                sessionId = "expired", @params = new CallParameters { name = name } };
+            var result = JsonUtility.FromJson<CallFailure>(SceneContracts.Dispatch(JsonUtility.ToJson(request)));
+            Assert.IsFalse(result.ok);
+            StringAssert.Contains("session expired", result.error.message);
+            Assert.IsNull(GameObject.Find(name));
+        }
+        [Test] public void CurrentSessionCanReadContext()
+        {
+            var request = new CallRequest { type = "call", id = "bound", method = "scene.context",
+                sessionId = SceneContracts.SessionId };
+            var result = JsonUtility.FromJson<CallSuccess>(SceneContracts.Dispatch(JsonUtility.ToJson(request)));
+            Assert.IsTrue(result.ok);
+            Assert.AreEqual(SceneContracts.SessionId, result.result.sessionId);
         }
         [Test] public void CubeCreationCanBeSelectedAndUndone()
         {
@@ -53,9 +73,11 @@ namespace AuroraView.Unity.Tests
         {
             for (var iteration = 0; iteration < 3; iteration++)
             {
+                var previousSession = SceneContracts.SessionId;
                 try
                 {
                     AgentEndpoint.Enable();
+                    Assert.AreNotEqual(previousSession, SceneContracts.SessionId);
                     var deadline = DateTime.UtcNow.AddSeconds(3);
                     while (!AgentEndpoint.IsListening && DateTime.UtcNow < deadline) Thread.Sleep(10);
                     Assert.IsTrue(AgentEndpoint.IsListening, "The current-user named pipe did not start: " + AgentEndpoint.LastError);

@@ -1,0 +1,5 @@
+dcc-mcp-core==0.20.41
+auroraview-dcc-mcp @ https://github.com/try-auroraview/auroraview/releases/download/auroraview-dcc-mcp-v0.1.0-preview.1/auroraview_dcc_mcp-0.1.0-py3-none-any.whl#sha256=450b74fd7c11c9247f076b456197a4c5b299c9edb34f851fda5ccc5cf1bf3558
+jsonschema==4.17.3
+attrs==25.4.0
+pyrsistent==0.20.0

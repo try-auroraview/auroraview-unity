@@ -35,7 +35,7 @@ vx just package
 
 ## 人与 Agent 共享显式契约
 
-AuroraView 专注 Web 界面、渲染、原生停靠和前端桥接。本仓库的 Node stdio 与本机管道是可选的 **preview 示例**，尚未接入 DCC-MCP Core。正式接入应通过薄层复用既有 Core server、工具、Skill、宿主执行桥、调度与生命周期；共同 Core facade 由对应集成项目提供，本包不创造另一套 Core API。服务借用和自有资源的规则见[共享运行时边界](docs/shared-runtime.md)。
+AuroraView 专注 Web 界面、渲染、原生停靠和前端桥接。原有 Node stdio 仍是可选的独立 **preview 示例**。当前源码候选新增[外部 Python Core 消费层](docs/core-runtime.md)，使用公开固定版本及 SHA256 锁定的 `dcc-mcp-core` 与 `auroraview-dcc-mcp`，可借用现有服务，或显式创建由 Core 提供队列、执行桥和生命周期的服务。Unity 内不嵌入 Python。真实 Editor 的 Core 调用和 GUI 仍待验收，已发布 `v0.1.0-preview.1` ZIP 不含这次候选。服务借用和自有资源的规则见[共享运行时边界](docs/shared-runtime.md)。
 
 页面使用 AuroraView 的 `call/on/trigger`。MCP 适配器只注册三项工具：
 

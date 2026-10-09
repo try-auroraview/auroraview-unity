@@ -1,0 +1,170 @@
+"""Offline consumer contracts; no Editor, service or network is started."""
+
+import json
+import subprocess
+import sys
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
+from auroraview_dcc_mcp import ClosedError, ContractError
+from core import PipeTransport, SceneTools
+
+
+class Host:
+    def __init__(self):
+        self.session = "a" * 32
+        self.calls = []
+        self.created = []
+
+    def __call__(self, request):
+        self.calls.append(request)
+        if request.get("sessionId", self.session) != self.session:
+            return {
+                "id": request["id"],
+                "ok": False,
+                "error": {"message": "Unity session expired"},
+            }
+        if request["method"] == "scene.create_cube":
+            self.created.append(request["params"].get("name", "Cube"))
+        return {
+            "id": request["id"],
+            "ok": True,
+            "result": {
+                "processId": 1234,
+                "sessionId": self.session,
+                "mainThreadId": 1,
+                "unityVersion": "2022.3.test",
+                "selection": [],
+                "created": None,
+            },
+        }
+
+
+class ConsumerTests(unittest.TestCase):
+    def setUp(self):
+        self.dns = patch(
+            "socket.getaddrinfo",
+            side_effect=AssertionError("Offline test attempted DNS"),
+        )
+        self.connect = patch(
+            "socket.socket.connect",
+            side_effect=AssertionError("Offline test attempted network"),
+        )
+        self.dns.start()
+        self.connect.start()
+        self.addCleanup(self.dns.stop)
+        self.addCleanup(self.connect.stop)
+        self.host = Host()
+        self.tools = SceneTools(1234, self.host)
+        self.addCleanup(self.tools.close)
+
+    def test_exact_three_contracts_share_host_methods_and_session(self):
+        names = [item["name"] for item in self.tools.owner.list_tools()]
+        self.assertEqual(names, ["scene.context", "scene.create_cube", "scene.select"])
+        self.tools.owner.call("scene.context")
+        self.tools.owner.call("scene.create_cube", {"name": "Cube"})
+        self.tools.owner.call("scene.select", {"objectId": 7})
+        self.assertEqual([item["method"] for item in self.host.calls[1:]], names)
+        self.assertTrue(
+            all(item["sessionId"] == "a" * 32 for item in self.host.calls[1:])
+        )
+
+    def test_invalid_or_unregistered_arguments_never_reach_unity(self):
+        for method, arguments in [
+            ("execute_code", {}),
+            ("scene.create_cube", {"name": ""}),
+            ("scene.create_cube", {"script": "bad"}),
+            ("scene.select", {"objectId": "7"}),
+        ]:
+            with self.subTest(method=method, arguments=arguments), self.assertRaises(
+                ContractError
+            ):
+                self.tools.owner.call(method, arguments)
+        self.assertEqual(len(self.host.calls), 1)
+
+    def test_reloaded_session_refuses_mutation_before_host_execution(self):
+        self.host.session = "b" * 32
+        with self.assertRaisesRegex(ContractError, "session expired"):
+            self.tools.owner.call("scene.create_cube", {"name": "Stale"})
+        self.assertEqual(self.host.created, [])
+
+    def test_closed_owner_does_not_dispatch(self):
+        self.tools.close()
+        with self.assertRaises(ClosedError):
+            self.tools.owner.call("scene.context")
+        self.assertEqual(len(self.host.calls), 1)
+
+    def test_missing_session_and_foreign_process_are_rejected(self):
+        for change in ({"sessionId": None}, {"processId": 55}):
+
+            def transport(request):
+                response = self.host(request)
+                response["result"].update(change)
+                return response
+
+            with self.subTest(change=change), self.assertRaises(ContractError):
+                SceneTools(1234, transport)
+
+    def test_mismatched_response_id_is_rejected(self):
+        def transport(request):
+            response = self.host(request)
+            response["id"] = "foreign"
+            return response
+
+        with self.assertRaisesRegex(ContractError, "match the request"):
+            SceneTools(1234, transport)
+
+    def test_pid_is_explicit_positive_integer(self):
+        for pid in (None, True, 0, -1, "1234"):
+            with self.subTest(pid=pid), self.assertRaises(ContractError):
+                SceneTools(pid, self.host)
+
+
+class TransportTests(unittest.TestCase):
+    def test_timeout_stops_owned_one_shot_client(self):
+        with patch(
+            "core.subprocess.run", side_effect=subprocess.TimeoutExpired("node", 14)
+        ) as run:
+            with self.assertRaisesRegex(ContractError, "timed out"):
+                PipeTransport(1234)({"type": "call"})
+        self.assertEqual(run.call_args.kwargs["timeout"], 14)
+        self.assertTrue(run.call_args.kwargs["check"])
+
+    def test_fixed_bridge_and_utf8_json(self):
+        response = {"id": "one", "ok": True}
+        with patch(
+            "core.subprocess.run",
+            return_value=subprocess.CompletedProcess([], 0, json.dumps(response), ""),
+        ) as run:
+            self.assertEqual(
+                PipeTransport(1234, "verified-node.exe")({"name": "立方体"}), response
+            )
+        command = run.call_args.args[0]
+        self.assertEqual(command[0], "verified-node.exe")
+        self.assertTrue(command[1].endswith("pipe-call.mjs"))
+        self.assertEqual(command[2:], ["--pid", "1234"])
+        self.assertIn("立方体", run.call_args.kwargs["input"])
+
+    def test_oversize_request_is_rejected_before_process_creation(self):
+        with patch("core.subprocess.run") as run, self.assertRaisesRegex(
+            ContractError, "64 KiB"
+        ):
+            PipeTransport(1234)({"value": "立" * 30000})
+        run.assert_not_called()
+
+    def test_bad_or_oversize_response_is_rejected(self):
+        for data in ("invalid", "x" * 65537):
+            with patch(
+                "core.subprocess.run",
+                return_value=subprocess.CompletedProcess([], 0, data, ""),
+            ):
+                with self.subTest(data_length=len(data)), self.assertRaises(
+                    ContractError
+                ):
+                    PipeTransport(1234)({})
+
+
+if __name__ == "__main__":
+    unittest.main()
