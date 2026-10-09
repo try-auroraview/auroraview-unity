@@ -7,7 +7,7 @@ using UnityEngine.SceneManagement;
 
 namespace AuroraView.Unity
 {
-    [Serializable] public sealed class CallParameters { public string name; public int objectId; }
+    [Serializable] public sealed class CallParameters { public string name; public int objectId; public EditorOwner owner; }
     [Serializable] public sealed class CallRequest
     {
         public string type;
@@ -33,6 +33,8 @@ namespace AuroraView.Unity
         public int mainThreadId;
         public ObjectInfo[] selection;
         public ObjectInfo created;
+        public EditorOwner editorOwner;
+        public bool exitRequested;
     }
     [Serializable] public sealed class CallSuccess { public string id; public bool ok = true; public HostResult result; }
     [Serializable] public sealed class CallError { public string code; public string message; }
@@ -44,7 +46,7 @@ namespace AuroraView.Unity
     {
         public static string SessionId { get; private set; } = Guid.NewGuid().ToString("N");
         public static readonly int MainThreadId = Thread.CurrentThread.ManagedThreadId;
-        public static readonly string[] Methods = { "scene.context", "scene.create_cube", "scene.select" };
+        public static readonly string[] Methods = { "scene.context", "scene.create_cube", "scene.select", "editor.exit" };
 
         internal static void RenewSession()
         {
@@ -53,7 +55,9 @@ namespace AuroraView.Unity
             SessionId = Guid.NewGuid().ToString("N");
         }
 
-        public static string Dispatch(string json)
+        public static string Dispatch(string json) => Dispatch(json, null);
+
+        internal static string Dispatch(string json, Action<CallRequest> requestExit)
         {
             if (Thread.CurrentThread.ManagedThreadId != MainThreadId)
                 throw new InvalidOperationException("Unity contracts require the Editor main thread.");
@@ -66,8 +70,16 @@ namespace AuroraView.Unity
                     throw new ArgumentException("Expected a call with a bounded nonempty id.");
                 if (!string.IsNullOrEmpty(request.sessionId) && request.sessionId != SessionId)
                     throw new InvalidOperationException("Unity session expired; explicitly attach the current Editor session.");
+                if (request.method == "editor.exit")
+                {
+                    if (requestExit == null) throw new InvalidOperationException("Editor exit is available only through the opted-in agent endpoint.");
+                    OwnedEditorExit.Validate(request);
+                }
                 var result = Execute(request.method, request.@params ?? new CallParameters());
-                return JsonUtility.ToJson(new CallSuccess { id = request.id, result = result });
+                if (request.method == "editor.exit") result.exitRequested = true;
+                var response = JsonUtility.ToJson(new CallSuccess { id = request.id, result = result });
+                if (request.method == "editor.exit") requestExit(request);
+                return response;
             }
             catch (Exception error)
             {
@@ -88,7 +100,8 @@ namespace AuroraView.Unity
             ObjectInfo created = null;
             switch (method)
             {
-                case "scene.context": break;
+                case "scene.context":
+                case "editor.exit": break;
                 case "scene.create_cube":
                     if (EditorApplication.isPlayingOrWillChangePlaymode)
                         throw new InvalidOperationException("Scene editing is disabled during Play mode.");
@@ -121,7 +134,8 @@ namespace AuroraView.Unity
                 processId = System.Diagnostics.Process.GetCurrentProcess().Id,
                 mainThreadId = MainThreadId,
                 selection = items,
-                created = created
+                created = created,
+                editorOwner = OwnedEditorExit.Current()
             };
         }
 

@@ -1,20 +1,49 @@
-param([ValidateSet('test','accept','agent','core')][string]$Mode = 'test', [string]$Node = 'node')
+param([ValidateSet('test','accept','agent','core','owned','compile')][string]$Mode = 'test', [string]$Node = 'node', [string]$RunId)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $editor = $env:UNITY_EDITOR
+if ($Mode -eq 'owned' -and (-not $editor -or $RunId.Length -ne 32 -or $RunId -cnotmatch '^[a-f0-9]{32}$')) {
+    throw 'Owned test launch requires explicit UNITY_EDITOR and a fresh lowercase 32-hex run ID.'
+}
 if (-not $editor) {
     $editors = Get-ChildItem -LiteralPath 'C:\Program Files\Unity\Hub\Editor' -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
     foreach ($candidate in $editors) { $path = Join-Path $candidate.FullName 'Editor/Unity.exe'; if (Test-Path -LiteralPath $path) { $editor = $path; break } }
 }
 if (-not $editor -or -not (Test-Path -LiteralPath $editor)) { throw 'Set UNITY_EDITOR to an installed licensed Windows Unity 2022.3+ Editor executable.' }
+if ($Mode -eq 'compile') {
+    $data = Join-Path (Split-Path -Parent $editor) 'Data'
+    $framework = Join-Path $data 'MonoBleedingEdge/lib/mono/4.7.1-api'
+    $compiler = Join-Path $data 'DotNetSdkRoslyn/csc.dll'
+    $dotnet = Join-Path $data 'NetCoreRuntime/dotnet.exe'
+    foreach ($path in @($framework, $compiler, $dotnet)) { if (-not (Test-Path -LiteralPath $path)) { throw "Unity compile dependency unavailable: $path" } }
+    $output = Join-Path $root 'build~/compile'
+    New-Item -ItemType Directory -Force -Path $output | Out-Null
+    $references = @(Get-ChildItem -LiteralPath $framework -Filter '*.dll' -File) +
+        @(Get-ChildItem -LiteralPath (Join-Path $framework 'Facades') -Filter '*.dll' -File) +
+        @(Get-ChildItem -LiteralPath (Join-Path $data 'Managed') -Filter '*.dll' -File -Recurse | Where-Object { $_.Name -match '^Unity(Engine|Editor)(\.|$)' })
+    $compileArgs = @('/nologo', '/nostdlib+', '/langversion:9', '/target:library', ('/out:' + (Join-Path $output 'AuroraView.Editor.dll')))
+    $compileArgs += @($references | ForEach-Object { '/reference:' + $_.FullName })
+    $compileArgs += @(Get-ChildItem -LiteralPath (Join-Path $root 'Editor') -Filter '*.cs' -File | ForEach-Object { $_.FullName })
+    $response = Join-Path $output 'compile.rsp'
+    [IO.File]::WriteAllLines($response, @($compileArgs | ForEach-Object { '"' + $_ + '"' }), (New-Object Text.UTF8Encoding($false)))
+    vx --cache-mode offline --no-auto-install uv run --offline --no-project --no-sync -- $dotnet $compiler /noconfig ('@' + $response)
+    exit $LASTEXITCODE
+}
 $project = Join-Path $root 'Samples~/SceneTools'
 $output = $env:AURORAVIEW_UNITY_EVIDENCE_DIR
 if (-not $output) { $output = Join-Path $root 'build~/evidence'; if ($Mode -eq 'core') { $output = Join-Path $output 'core' } }
+if ($Mode -eq 'owned') {
+    if (-not $env:AURORAVIEW_UNITY_EVIDENCE_DIR) { $output = Join-Path $output ('owned-' + $RunId) }
+    if (Test-Path -LiteralPath $output) { throw 'Owned launch needs a new evidence directory.' }
+    if (@(Get-CimInstance Win32_Process -Filter "Name = 'Unity.exe'").Count) { throw 'An Editor is already running; no owned test Editor launched.' }
+}
 $env:AURORAVIEW_UNITY_EVIDENCE_DIR = $output
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 $log = Join-Path $output "unity-$Mode.log"
 $arguments = @('-projectPath', $project, '-logFile', $log)
-if ($Mode -eq 'test') {
+if ($Mode -eq 'owned') {
+    $arguments += @('-auroraviewOwnedTest', $RunId, '-executeMethod', 'AuroraView.Unity.AgentEndpoint.Enable')
+} elseif ($Mode -eq 'test') {
     $prior = Join-Path $output 'editmode.xml'
     if (Test-Path -LiteralPath $prior) { Remove-Item -LiteralPath $prior -Force }
     $arguments += @('-batchmode', '-runTests', '-testPlatform', 'EditMode', '-testResults', (Join-Path $output 'editmode.xml'))
@@ -31,7 +60,15 @@ if ($Mode -eq 'test') {
     }
     $arguments += @('-batchmode', '-executeMethod', 'AuroraView.Unity.AgentAcceptance.Run')
 }
-$process = Start-Process -FilePath $editor -ArgumentList ($arguments | ForEach-Object { '"' + $_ + '"' }) -PassThru -WindowStyle Hidden
+$windowStyle = if ($Mode -eq 'owned') { 'Normal' } else { 'Hidden' }
+$process = Start-Process -FilePath $editor -ArgumentList ($arguments | ForEach-Object { '"' + $_ + '"' }) -PassThru -WindowStyle $windowStyle
+if ($Mode -eq 'owned') {
+    $owner = [ordered]@{ processId = $process.Id; processCreationFileTime = $process.StartTime.ToFileTimeUtc().ToString([Globalization.CultureInfo]::InvariantCulture); projectPath = [IO.Path]::GetFullPath($project); runId = $RunId }
+    $owner | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'owned-editor-owner.json') -Encoding UTF8
+    [ordered]@{ editorOwner = $owner; executable = $editor; arguments = $arguments; log = $log; exitObserved = $false } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $output 'owned-editor-launch.json') -Encoding UTF8
+    Write-Output ("Owned Editor launched; retain its process handle and verify real exit separately: " + $process.Id)
+    return
+}
 if ($Mode -in @('agent','core')) {
     $ready = Join-Path $output 'unity-agent-ready.json'
     $deadline = [DateTime]::UtcNow.AddSeconds(240)

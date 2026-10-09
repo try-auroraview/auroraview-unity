@@ -84,6 +84,15 @@ class CoreServiceOptionsTests(unittest.TestCase):
                     service._start()
             from_env.assert_not_called()
 
+    def test_editor_exit_owner_is_forwarded_only_by_bootstrap(self):
+        owner = {"runId": "a" * 32}
+        with tempfile.TemporaryDirectory() as state:
+            service = self.prepare(state, editor_owner=owner)
+            with patch("core_server.SceneTools") as tools:
+                service._start()
+            self.assertIs(tools.call_args.kwargs["editor_owner"], owner)
+            service.driver.start.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

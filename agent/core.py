@@ -58,7 +58,7 @@ class SceneTools:
     work remains on EditorApplication.update through the current-user pipe.
     """
 
-    def __init__(self, pid, transport=None, *, node="node"):
+    def __init__(self, pid, transport=None, *, node="node", editor_owner=None):
         if type(pid) is not int or pid < 1:
             raise ContractError("An explicit positive Unity Editor PID is required")
         self.pid = pid
@@ -73,45 +73,75 @@ class SceneTools:
             raise ContractError(
                 "Unity endpoint lacks a supported session identity; update the package"
             )
+        tools = [
+            Tool(
+                "scene.context",
+                "Read the bound Unity scene, selection and main-thread identity",
+                {"type": "object", "properties": {}, "additionalProperties": False},
+                functools.partial(self._call, "scene.context"),
+                read_only=True,
+                destructive=False,
+                idempotent=True,
+            ),
+            Tool(
+                "scene.create_cube",
+                "Create and select a Unity cube with Undo; refuses Play mode",
+                {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "minLength": 1, "maxLength": 80}
+                    },
+                    "additionalProperties": False,
+                },
+                functools.partial(self._call, "scene.create_cube"),
+                destructive=False,
+            ),
+            Tool(
+                "scene.select",
+                "Select a live scene GameObject returned by the bound Unity session",
+                {
+                    "type": "object",
+                    "properties": {"objectId": {"type": "integer"}},
+                    "required": ["objectId"],
+                    "additionalProperties": False,
+                },
+                functools.partial(self._call, "scene.select"),
+                destructive=False,
+                idempotent=True,
+            ),
+        ]
+        if editor_owner is not None:
+            if (
+                not isinstance(editor_owner, dict)
+                or set(editor_owner)
+                != {"processId", "processCreationFileTime", "projectPath", "runId"}
+                or type(editor_owner["processId"]) is not int
+                or editor_owner["processId"] != pid
+                or not isinstance(editor_owner["processCreationFileTime"], str)
+                or not re.fullmatch(
+                    r"[1-9][0-9]*", editor_owner["processCreationFileTime"]
+                )
+                or not isinstance(editor_owner["projectPath"], str)
+                or not Path(editor_owner["projectPath"]).is_absolute()
+                or not isinstance(editor_owner["runId"], str)
+                or not re.fullmatch(r"[a-f0-9]{32}", editor_owner["runId"])
+                or editor_owner != self.context.get("editorOwner")
+            ):
+                raise ContractError("Exact owned test Editor launch identity required")
+            tools.append(
+                Tool(
+                    "editor.exit",
+                    "Request exit of this owned test Editor only; refuses unsaved work. ACK is not process exit.",
+                    {"type": "object", "properties": {}, "additionalProperties": False},
+                    functools.partial(
+                        self._call, "editor.exit", owner=dict(editor_owner)
+                    ),
+                    destructive=True,
+                )
+            )
         self.owner = ToolSet(
             "auroraview-unity-scene",
-            [
-                Tool(
-                    "scene.context",
-                    "Read the bound Unity scene, selection and main-thread identity",
-                    {"type": "object", "properties": {}, "additionalProperties": False},
-                    functools.partial(self._call, "scene.context"),
-                    read_only=True,
-                    destructive=False,
-                    idempotent=True,
-                ),
-                Tool(
-                    "scene.create_cube",
-                    "Create and select a Unity cube with Undo; refuses Play mode",
-                    {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string", "minLength": 1, "maxLength": 80}
-                        },
-                        "additionalProperties": False,
-                    },
-                    functools.partial(self._call, "scene.create_cube"),
-                    destructive=False,
-                ),
-                Tool(
-                    "scene.select",
-                    "Select a live scene GameObject returned by the bound Unity session",
-                    {
-                        "type": "object",
-                        "properties": {"objectId": {"type": "integer"}},
-                        "required": ["objectId"],
-                        "additionalProperties": False,
-                    },
-                    functools.partial(self._call, "scene.select"),
-                    destructive=False,
-                    idempotent=True,
-                ),
-            ],
+            tools,
             description="Explicit AuroraView Unity scene contracts over the host's current-user pipe",
             dcc="unity",
         )

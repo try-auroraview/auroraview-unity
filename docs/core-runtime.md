@@ -1,5 +1,7 @@
 # Consume DCC-MCP Core
 
+For explicitly launched test instances, see [owned test Editor exit](owned-editor-exit.md).
+
 The optional external Python integration registers the same three `SceneContracts` used by the WebView. Unity still owns scene access, selection, Undo, its update loop and the native panel. DCC-MCP Core owns MCP/HTTP, discovery, dispatch, service registration and shutdown. No Python interpreter is embedded in Unity.
 
 ## Fixed public dependencies

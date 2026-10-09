@@ -69,6 +69,14 @@ namespace AuroraView.Unity.Tests
             var result = JsonUtility.FromJson<CallFailure>(SceneContracts.Dispatch("{\"type\":\"call\",\"id\":\"test\",\"method\":\"scene.select\",\"params\":{\"objectId\":0}}"));
             Assert.IsFalse(result.ok);
         }
+        [Test] public void BrowserDispatcherCannotRequestEditorExit()
+        {
+            var request = new CallRequest { type = "call", id = "exit", method = "editor.exit",
+                sessionId = SceneContracts.SessionId };
+            var result = JsonUtility.FromJson<CallFailure>(SceneContracts.Dispatch(JsonUtility.ToJson(request)));
+            Assert.IsFalse(result.ok);
+            StringAssert.Contains("agent endpoint", result.error.message);
+        }
         [Test] public void OwnedPreviewEndpointCanStopAndReopen()
         {
             for (var iteration = 0; iteration < 3; iteration++)

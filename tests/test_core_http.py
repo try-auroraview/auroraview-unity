@@ -17,9 +17,10 @@ from test_core import Host
 class CoreHttpTests(unittest.TestCase):
     def test_owned_cleanup_failure_retains_lane_for_retry(self):
         for component, method in (("tools", "close"), ("server", "stop")):
-            with self.subTest(component=component), tempfile.TemporaryDirectory(
-                prefix="unity-core-retry-"
-            ) as state:
+            with (
+                self.subTest(component=component),
+                tempfile.TemporaryDirectory(prefix="unity-core-retry-") as state,
+            ):
                 service = CoreService(1234, state, transport=Host(), gateway_port=0)
                 service.start()
                 target = getattr(service, component)
@@ -47,7 +48,7 @@ class CoreHttpTests(unittest.TestCase):
                 finally:
                     service.close()
 
-    def test_published_core_discovery_call_and_borrowed_cleanup(self):
+    def test_published_core_owned_exit_and_borrowed_cleanup(self):
         from dcc_mcp_core import __version__
 
         requirements = (
@@ -60,11 +61,20 @@ class CoreHttpTests(unittest.TestCase):
         )
         self.assertEqual(__version__, expected)
         host = Host()
+        owner = {
+            "processId": 1234,
+            "processCreationFileTime": "134000000000000000",
+            "projectPath": str(Path.cwd()),
+            "runId": "a" * 32,
+        }
         caller_threads = []
 
         def transport(request):
             caller_threads.append(threading.get_ident())
-            return host(request)
+            response = host(request)
+            response["result"]["editorOwner"] = dict(owner)
+            response["result"]["exitRequested"] = request["method"] == "editor.exit"
+            return response
 
         opener = build_opener(ProxyHandler({}))
 
@@ -97,7 +107,9 @@ class CoreHttpTests(unittest.TestCase):
                 return json.loads(body)
 
         with tempfile.TemporaryDirectory(prefix="unity-core-test-") as state:
-            service = CoreService(1234, state, transport=transport, gateway_port=0)
+            service = CoreService(
+                1234, state, transport=transport, gateway_port=0, editor_owner=owner
+            )
             try:
                 service.start()
                 url = service.handle.mcp_url()
@@ -134,6 +146,17 @@ class CoreHttpTests(unittest.TestCase):
                 self.assertEqual(host.created, ["Core Cube"])
                 self.assertEqual(len(set(caller_threads)), 1)
                 self.assertNotEqual(caller_threads[0], threading.get_ident())
+                exit_method = service.binding.method_names["editor.exit"]
+                response = rpc(
+                    url,
+                    "tools/call",
+                    {"name": exit_method, "arguments": {"params": {}}},
+                )
+                self.assertNotIn("error", response, response)
+                self.assertFalse(response["result"].get("isError", False), response)
+                self.assertEqual(host.calls[-1]["method"], "editor.exit")
+                self.assertEqual(host.calls[-1]["params"], {"owner": owner})
+                self.assertEqual(host.calls[-1]["sessionId"], host.session)
                 # Failed borrowed cleanup retains the owner for retry and
                 # revokes calls without stopping its service.
                 unload = service.server.unload_skill

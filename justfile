@@ -13,6 +13,10 @@ build: fetch-sdk
 
 test:
     vx node --test tests/*.test.mjs
+    vx just test-editor-owner
+
+test-editor-owner:
+    New-Item -ItemType Directory -Force -Path 'build~/owner-check' | Out-Null; $check = Join-Path $PWD 'build~/owner-check/EditorOwnerCheck.exe'; vx uv run --offline --no-project --no-sync -- 'C:/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe' /nologo /warnaserror+ "/out:$check" (Join-Path $PWD 'Editor/EditorOwner.cs') (Join-Path $PWD 'tests~/EditorOwnerCheck.cs'); if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; vx uv run --offline --no-project --no-sync -- $check; exit $LASTEXITCODE
 
 core-env:
     powershell.exe -NoProfile -File scripts/core-env.ps1
@@ -29,11 +33,20 @@ test-core-http: core-env
 serve-core pid state_dir node='node': core-env
     vx uv run --no-project --no-sync -- "{{core_python}}" agent/core_server.py --pid {{pid}} --state-dir "{{state_dir}}" --node "{{node}}"
 
+serve-owned-core pid state_dir owner_file node='node': core-env
+    vx uv run --no-project --no-sync -- "{{core_python}}" agent/core_server.py --pid {{pid}} --state-dir "{{state_dir}}" --node "{{node}}" --editor-owner-file "{{owner_file}}"
+
 test-native: build
     build~/native/Release/auroraview_native_test.exe
 
 test-unity:
     powershell.exe -NoProfile -File scripts/unity.ps1 -Mode test
+
+compile-unity:
+    powershell.exe -NoProfile -File scripts/unity.ps1 -Mode compile
+
+launch-owned-editor run_id:
+    powershell.exe -NoProfile -File scripts/unity.ps1 -Mode owned -RunId "{{run_id}}"
 
 accept-unity:
     powershell.exe -NoProfile -File scripts/unity.ps1 -Mode accept
