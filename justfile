@@ -45,8 +45,8 @@ test-unity:
 compile-unity:
     powershell.exe -NoProfile -File scripts/unity.ps1 -Mode compile
 
-launch-owned-editor run_id:
-    powershell.exe -NoProfile -File scripts/unity.ps1 -Mode owned -RunId "{{run_id}}"
+launch-owned-editor run_id candidate_receipt:
+    powershell.exe -NoProfile -File scripts/unity.ps1 -Mode owned -RunId "{{run_id}}" -CandidateReceipt "{{candidate_receipt}}"
 
 exit-owned-editor owner_file node='node': core-env
     vx uv run --no-project --no-sync -- "{{core_python}}" agent/core.py --owner-file "{{owner_file}}" --node "{{node}}"

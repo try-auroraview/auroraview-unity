@@ -6,7 +6,12 @@ supplies the exact identity from a newly launched owned test Editor.
 This is a Unity lifecycle command, independent of native CUA window-close policy.
 
 After the controller grants the host and desktop resource window, set
-`UNITY_EDITOR` explicitly and run `vx just launch-owned-editor <fresh-32-hex-run-id>`.
+`UNITY_EDITOR` explicitly and run
+`vx just launch-owned-editor <fresh-32-hex-run-id> <candidate-receipt>`.
+The controller must first verify the exact-head CI and native artifact, then
+freeze a receipt containing `source_commit`, `exact_head_ci="success"`,
+`native_dll_sha256` and `native_dll_artifact_id`. Launch verifies the actual
+HEAD, clean source tree and DLL against that receipt and records their identity.
 The existing launcher refuses any running Editor and an existing evidence
 directory. It passes `-auroraviewOwnedTest`, opts into AgentEndpoint, and writes
 `owned-editor-owner.json` and `owned-editor-launch.json`. It does not establish

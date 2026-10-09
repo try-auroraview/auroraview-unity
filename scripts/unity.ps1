@@ -1,4 +1,4 @@
-param([ValidateSet('test','accept','agent','core','owned','compile')][string]$Mode = 'test', [string]$Node = 'node', [string]$RunId)
+param([ValidateSet('test','accept','agent','core','owned','compile')][string]$Mode = 'test', [string]$Node = 'node', [string]$RunId, [string]$CandidateReceipt)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $editor = $env:UNITY_EDITOR
@@ -33,6 +33,22 @@ $project = Join-Path $root 'Samples~/SceneTools'
 $output = $env:AURORAVIEW_UNITY_EVIDENCE_DIR
 if (-not $output) { $output = Join-Path $root 'build~/evidence'; if ($Mode -eq 'core') { $output = Join-Path $output 'core' } }
 if ($Mode -eq 'owned') {
+    if (-not $CandidateReceipt) { throw 'Owned launch requires the controller-reviewed exact-head CI and native DLL receipt.' }
+    $candidate = Get-Content -LiteralPath $CandidateReceipt -Raw | ConvertFrom-Json
+    if ($candidate.source_commit -isnot [string] -or $candidate.source_commit.Length -ne 40 -or
+        $candidate.source_commit -cnotmatch '^[0-9a-f]{40}$' -or $candidate.exact_head_ci -cne 'success' -or
+        $candidate.native_dll_sha256 -isnot [string] -or $candidate.native_dll_sha256.Length -ne 64 -or
+        $candidate.native_dll_sha256 -cnotmatch '^[0-9a-f]{64}$' -or
+        ($candidate.native_dll_artifact_id -isnot [long] -and $candidate.native_dll_artifact_id -isnot [int]) -or
+        $candidate.native_dll_artifact_id -lt 1) { throw 'Incomplete candidate source/CI/artifact identity.' }
+    $sourceHead = @(& vx --cache-mode offline --no-auto-install git -C $root rev-parse HEAD | Where-Object { $_ -match '^[0-9a-f]{40}$' })
+    if ($LASTEXITCODE -ne 0 -or $sourceHead.Count -ne 1 -or $sourceHead[0] -cne $candidate.source_commit) { throw 'Owned launch source differs from the reviewed CI receipt.' }
+    $changes = @(& vx --cache-mode offline --no-auto-install git -C $root status --porcelain)
+    if ($LASTEXITCODE -ne 0 -or $changes.Count) { throw 'Owned launch requires the unchanged reviewed source tree.' }
+    $hash = [Security.Cryptography.SHA256]::Create()
+    try { $dll = [BitConverter]::ToString($hash.ComputeHash([IO.File]::ReadAllBytes((Join-Path $root 'Editor/Plugins/x86_64/auroraview_unity.dll')))).Replace('-', '').ToLowerInvariant() }
+    finally { $hash.Dispose() }
+    if ($dll -cne $candidate.native_dll_sha256) { throw 'Owned launch native DLL differs from the reviewed artifact.' }
     if (-not $env:AURORAVIEW_UNITY_EVIDENCE_DIR) { $output = Join-Path $output ('owned-' + $RunId) }
     if (Test-Path -LiteralPath $output) { throw 'Owned launch needs a new evidence directory.' }
     if (@(Get-CimInstance Win32_Process -Filter "Name = 'Unity.exe'").Count) { throw 'An Editor is already running; no owned test Editor launched.' }
@@ -65,7 +81,7 @@ $process = Start-Process -FilePath $editor -ArgumentList ($arguments | ForEach-O
 if ($Mode -eq 'owned') {
     $owner = [ordered]@{ processId = $process.Id; processCreationFileTime = $process.StartTime.ToFileTimeUtc().ToString([Globalization.CultureInfo]::InvariantCulture); projectPath = [IO.Path]::GetFullPath($project); runId = $RunId }
     $owner | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'owned-editor-owner.json') -Encoding UTF8
-    [ordered]@{ editorOwner = $owner; executable = $editor; arguments = $arguments; log = $log; exitObserved = $false } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $output 'owned-editor-launch.json') -Encoding UTF8
+    [ordered]@{ editorOwner = $owner; executable = $editor; arguments = $arguments; log = $log; sourceCommit = $sourceHead[0]; nativeDllSha256 = $dll; nativeDllArtifactId = $candidate.native_dll_artifact_id; candidateReceipt = [IO.Path]::GetFullPath($CandidateReceipt); exitObserved = $false } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $output 'owned-editor-launch.json') -Encoding UTF8
     Write-Output ("Owned Editor launched; retain its process handle and verify real exit separately: " + $process.Id)
     return
 }
