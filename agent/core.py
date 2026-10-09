@@ -1,5 +1,7 @@
 """Borrow a DCC-MCP service for the existing Unity scene contracts."""
 
+import argparse
+import contextlib
 import functools
 import json
 import re
@@ -194,3 +196,27 @@ class SceneTools:
 
     def close(self):
         self.owner.close()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Request exit of one explicitly owned test Editor."
+    )
+    parser.add_argument("--owner-file", type=Path, required=True)
+    parser.add_argument("--node", default="node")
+    args = parser.parse_args()
+    with args.owner_file.open("rb") as stream:
+        data = stream.read(65537)
+    if len(data) > 65536:
+        parser.error("Editor owner file exceeds 64 KiB")
+    owner = json.loads(data.decode("utf-8-sig"))
+    if not isinstance(owner, dict):
+        parser.error("Editor owner must be an object")
+    with contextlib.closing(
+        SceneTools(owner.get("processId"), node=args.node, editor_owner=owner)
+    ) as tools:
+        print(json.dumps(tools.owner.call("editor.exit")))
+
+
+if __name__ == "__main__":
+    main()

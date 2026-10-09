@@ -1,6 +1,7 @@
 """Offline consumer contracts; no Editor, service or network is started."""
 
 import json
+import io
 import subprocess
 import sys
 import unittest
@@ -10,6 +11,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
 from auroraview_dcc_mcp import ClosedError, ContractError
 from core import PipeTransport, SceneTools
+import core
 
 
 class Host:
@@ -169,6 +171,48 @@ class EditorExitTests(unittest.TestCase):
         with self.assertRaises(ContractError):
             tools.owner.call("editor.exit")
         self.assertEqual(len(self.host.calls), 1)
+
+    def test_one_shot_cli_calls_only_the_owned_exit_and_closes_owner(self):
+        with (
+            patch("core.argparse.ArgumentParser.parse_args") as args,
+            patch("core.SceneTools") as tools,
+            patch("sys.stdout", new_callable=io.StringIO),
+        ):
+            args.return_value.owner_file.open.return_value.__enter__.return_value.read.return_value = json.dumps(
+                self.owner
+            ).encode()
+            args.return_value.node = "owned-node"
+            tools.return_value.owner.call.return_value = {"exitRequested": True}
+            core.main()
+        tools.assert_called_once_with(1234, node="owned-node", editor_owner=self.owner)
+        tools.return_value.owner.call.assert_called_once_with("editor.exit")
+        tools.return_value.close.assert_called_once_with()
+
+    def test_one_shot_cli_closes_owner_when_exit_is_refused(self):
+        with (
+            patch("core.argparse.ArgumentParser.parse_args") as args,
+            patch("core.SceneTools") as tools,
+        ):
+            args.return_value.owner_file.open.return_value.__enter__.return_value.read.return_value = json.dumps(
+                self.owner
+            ).encode()
+            tools.return_value.owner.call.side_effect = ContractError("unsaved work")
+            with self.assertRaisesRegex(ContractError, "unsaved work"):
+                core.main()
+        tools.return_value.close.assert_called_once_with()
+
+    def test_one_shot_cli_rejects_unbounded_or_nonobject_owner_before_probe(self):
+        for data in (b"x" * 65537, b"[]"):
+            with (
+                self.subTest(size=len(data)),
+                patch("core.argparse.ArgumentParser.parse_args") as args,
+                patch("core.SceneTools") as tools,
+                patch("sys.stderr", new_callable=io.StringIO),
+            ):
+                args.return_value.owner_file.open.return_value.__enter__.return_value.read.return_value = data
+                with self.assertRaises(SystemExit):
+                    core.main()
+            tools.assert_not_called()
 
 
 class TransportTests(unittest.TestCase):

@@ -12,8 +12,13 @@ directory. It passes `-auroraviewOwnedTest`, opts into AgentEndpoint, and writes
 `owned-editor-owner.json` and `owned-editor-launch.json`. It does not establish
 UI acceptance, automatically end the Editor, or activate a license.
 
-Pass that owner file to `vx just serve-owned-core <pid> <new-state-dir> <owner-file>`
-or `SceneTools(..., editor_owner=owner)` on Core's existing execution lane.
+Use `vx just exit-owned-editor <owner-file>` for a bounded one-shot invocation of
+the public Core facade's typed tool. It probes the current session, calls only
+`editor.exit`, and closes its tool owner without starting another MCP service.
+Each of the two existing pipe calls has a 14-second client timeout.
+An existing service can opt in with
+`vx just serve-owned-core <pid> <new-state-dir> <owner-file>` or
+`SceneTools(..., editor_owner=owner)` on Core's existing execution lane.
 The supplied PID, decimal-string process birth, absolute project path and run ID
 must match the real endpoint context. The tool accepts an empty argument object;
 clients cannot choose another process, project, exit code or arbitrary script.
