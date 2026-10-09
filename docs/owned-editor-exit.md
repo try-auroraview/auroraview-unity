@@ -31,8 +31,9 @@ The host requires its current session and the same identity again at dispatch.
 An ordinary Editor without the launch flag cannot use this command.
 
 The endpoint executes validation on `EditorApplication.update`. It rejects
-Play mode, compilation/import activity, dirty scenes, dirty persistent assets
-and open Prefab stages. It never saves assets, clears dirty flags, performs
+Play mode, compilation/import activity, dirty scenes, dirty persistent assets,
+Editor windows with `hasUnsavedChanges`, and open Prefab stages. Window checks
+also cover nonpersistent custom Editor windows. It never saves assets, clears dirty flags, performs
 Undo, or discards changes. It validates again immediately before exiting.
 The browser dispatcher cannot schedule exit.
 
@@ -49,9 +50,18 @@ and read back the owned endpoint/socket/registry state. ACK, missing HWND or a
 late missing PID alone never proves complete shutdown or releases resources.
 
 `vx just test-editor-owner` runs dependency-free identity and unsaved-work
-guards without launching Unity. `vx just compile-unity` uses the installed
+guards without launching Unity. It compiles the production `OwnedEditorExit`
+against controlled Unity API doubles and exercises a nonpersistent window's
+unsaved flag through both `Validate` and the final `Exit` recheck. This does not
+certify live Unity API behavior or transport write-failure/timeout sequencing.
+`vx just compile-unity` uses the installed
 Unity C# compiler and reference assemblies without starting an Editor.
 EditMode tests and real lifecycle acceptance still require their own resource
 grant. Freeze this new managed candidate and its actual checks separately;
 the old 2a47af7 launch receipt cannot certify it. Current V4 SDK/Core/native
 inputs remain unchanged.
+
+Unity documents window state in
+[`EditorWindow.hasUnsavedChanges`](https://docs.unity3d.com/2022.3/Documentation/ScriptReference/EditorWindow-hasUnsavedChanges.html).
+[`EditorApplication.Exit`](https://docs.unity3d.com/2022.3/Documentation/ScriptReference/EditorApplication.Exit.html)
+exits immediately without asking to save, so these guards must run before it.

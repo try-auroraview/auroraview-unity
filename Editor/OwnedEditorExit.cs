@@ -39,7 +39,7 @@ namespace AuroraView.Unity
         internal static void Validate(CallRequest request)
         {
             var actual = Current();
-            EditorOwner.RequireMatch(request.@params?.owner, actual, request.sessionId, SceneContracts.SessionId);
+            EditorOwner.RequireMatch(request.@params == null ? null : request.@params.owner, actual, request.sessionId, SceneContracts.SessionId);
             var project = Argument("-projectPath");
             if (string.IsNullOrEmpty(project) || !Path.IsPathRooted(project) ||
                 !string.Equals(Path.GetFullPath(project).TrimEnd(Path.DirectorySeparatorChar),
@@ -50,7 +50,12 @@ namespace AuroraView.Unity
                 dirtyScene |= SceneManager.GetSceneAt(index).isDirty;
             var dirtyAsset = false;
             foreach (var item in Resources.FindObjectsOfTypeAll<UnityEngine.Object>())
+            {
+                var window = item as EditorWindow;
+                if (window != null && window.hasUnsavedChanges)
+                    throw new InvalidOperationException("Exit refused: an Editor window contains unsaved work.");
                 if (EditorUtility.IsPersistent(item) && EditorUtility.IsDirty(item)) { dirtyAsset = true; break; }
+            }
             EditorOwner.RequireClean(EditorApplication.isCompiling || EditorApplication.isUpdating ||
                 EditorApplication.isPlayingOrWillChangePlaymode, dirtyScene, dirtyAsset,
                 PrefabStageUtility.GetCurrentPrefabStage() != null);
