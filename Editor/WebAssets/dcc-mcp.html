@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; frame-src 'none'">
+  <title>DCC-MCP Scene Tools</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="dcc-mcp.js" defer></script>
+</head>
+<body><main>
+  <header><div class="brand">AuroraView</div><span class="label">UNITY · DCC-MCP</span></header>
+  <section class="intro"><p class="eyebrow">EDITOR TOOLS</p><h1>Inspect. Create.<br><span>See the result.</span></h1>
+    <p>Read the current project, Console and unsaved asset diagnostics through the installed DCC-MCP Unity plugin.</p>
+    <p id="status" class="status" role="status">Waiting for the panel bridge…</p>
+  </section>
+  <section class="card" aria-labelledby="inspect-title"><h2 id="inspect-title">Inspect the Editor</h2>
+    <div class="input-row"><button id="project" disabled>Project state</button><button id="console" disabled>Console</button><button id="dirty" disabled>Dirty assets</button></div>
+    <p class="hint">Console history begins when the official plugin loads. Dirty asset identities do not establish ownership or permission to discard work.</p>
+  </section>
+  <section class="card" aria-labelledby="create-title"><h2 id="create-title">Create a GameObject</h2>
+    <label for="object-name">Object name</label><div class="input-row"><input id="object-name" value="AuroraView Object" maxlength="80"><button id="create" disabled>Create object</button></div>
+    <p class="hint">Uses the official Undo command, then reads back the created object. Changes remain unsaved.</p>
+  </section>
+  <section class="card" aria-labelledby="result-title"><h2 id="result-title">Result</h2><p id="summary" role="status">Choose a command.</p><pre id="result" tabindex="0" aria-label="Command result"></pre></section>
+</main></body></html>

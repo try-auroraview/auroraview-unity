@@ -4,7 +4,7 @@ A native Windows Unity Editor panel for web tools, with the same explicit scene 
 
 The included Scene Tools demo creates a real cube, reads the active scene and selection, and selects objects. Unity's main thread performs every operation; scene creation supports Undo. The browser is Microsoft WebView2 embedded as a **child HWND inside an EditorWindow**, not a browser launched beside Unity.
 
-[中文说明](README.zh-CN.md) · [Architecture](docs/architecture.md) · [Validation](docs/validation.md) · [AuroraView](https://github.com/try-auroraview/auroraview)
+[中文说明](README.zh-CN.md) · [Architecture](docs/architecture.md) · [Validation](docs/validation.md) · [Official DCC-MCP panel](docs/official-unity.md) · [AuroraView](https://github.com/try-auroraview/auroraview)
 
 ## Run the demo
 

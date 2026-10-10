@@ -29,6 +29,7 @@ test('package staging stays outside Unity imports and retains clean release cont
     'package.json', 'Editor/SceneContracts.cs', 'Editor/AuroraView.Editor.asmdef',
     'Editor/Plugins/x86_64/auroraview_unity.dll', 'docs/core-runtime.md',
     'README.md', 'README.zh-CN.md', 'LICENSE', 'THIRD_PARTY.md',
+    'Samples~/DccMcpSceneTools/Editor/DccMcpSceneTools.cs',
     'agent/core.py', 'agent/core.py.meta', 'agent/pipe-call.mjs', 'agent/pipe-call.mjs.meta',
     'agent/requirements-core.txt', 'agent/requirements-core.txt.meta',
     'agent/nested/helper.py', 'agent/nested/helper.py.meta',

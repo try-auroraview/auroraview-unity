@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $output = Join-Path $root 'build~/package'
 New-Item -ItemType Directory -Force -Path $output | Out-Null
-$files = @('package.json','Editor','agent','docs','README.md','README.zh-CN.md','LICENSE','THIRD_PARTY.md')
+$files = @('package.json','Editor','agent','docs','README.md','README.zh-CN.md','LICENSE','THIRD_PARTY.md','Samples~/DccMcpSceneTools')
 $stage = Join-Path $output 'com.auroraview.unity'
 if (Test-Path -LiteralPath $stage) {
     $resolvedStage = [IO.Path]::GetFullPath($stage)

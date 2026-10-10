@@ -1,5 +1,6 @@
 #include "view.h"
 #include "bridge.h"
+#include "script_limits.h"
 #include <objbase.h>
 #include <unknwn.h>
 #include <wrl.h>
@@ -17,8 +18,9 @@
 using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
 namespace {
-constexpr size_t kMessageLimit = 65536;
-constexpr size_t kQueueLimit = 256;
+using auroraview::CanQueueScript;
+using auroraview::kMessageLimit;
+using auroraview::kQueueLimit;
 struct Placement { HWND parent = nullptr; int x = 0, y = 0, width = 1, height = 1; bool visible = false; };
 bool OwnsWindow(HWND window) {
     DWORD pid = 0;
@@ -49,10 +51,13 @@ public:
     int State() const { return state_.load(); }
     void Place(Placement placement) { std::lock_guard<std::mutex> guard(mutex_); placement_ = placement; }
     bool Eval(const wchar_t* script) {
-        if (!script || wcslen(script) > kMessageLimit || closing_.load()) return false;
+        if (!script || closing_.load()) return false;
+        const auto chars = wcslen(script);
         std::lock_guard<std::mutex> guard(mutex_);
-        if (scripts_.size() >= kQueueLimit) return false;
-        scripts_.emplace_back(script); return true;
+        if (closing_.load() || !CanQueueScript(chars, scripts_.size(), scriptChars_)) return false;
+        scripts_.emplace_back(script);
+        scriptChars_ += chars;
+        return true;
     }
     int Poll(wchar_t* output, int capacity) {
         if (!output || capacity < 1) return 0;
@@ -163,7 +168,11 @@ private:
     void Apply() {
         Placement placement;
         std::deque<std::wstring> scripts;
-        { std::lock_guard<std::mutex> guard(mutex_); placement = placement_; if (State() == 1) scripts.swap(scripts_); }
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            placement = placement_;
+            if (State() == 1) { scripts.swap(scripts_); scriptChars_ = 0; }
+        }
         if (!OwnsWindow(placement.parent)) { closing_.store(true); return; }
         if (GetParent(child_) != placement.parent) SetParent(child_, placement.parent);
         SetWindowPos(child_, HWND_TOP, placement.x, placement.y, (std::max)(1, placement.width), (std::max)(1, placement.height),
@@ -214,6 +223,7 @@ private:
     std::mutex mutex_;
     Placement placement_;
     std::deque<std::wstring> scripts_, messages_;
+    size_t scriptChars_ = 0;
     std::atomic<int> state_{0};
     std::atomic<bool> closing_{false};
     std::atomic<bool> stopped_{false};

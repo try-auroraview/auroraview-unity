@@ -9,6 +9,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: loonghao/vx@6948178844826716e636b474ab322dd8dc115578
         with:
           version: '0.9.35'
@@ -16,6 +18,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - run: vx just check
       - run: vx just package
+      - run: vx just test-script-limits
       - uses: actions/upload-artifact@v7
         with:
           name: auroraview-unity-windows-x64
