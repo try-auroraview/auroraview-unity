@@ -5,17 +5,35 @@ The Core adapter can additionally expose `editor.exit` when its trusted bootstra
 supplies the exact identity from a newly launched owned test Editor.
 This is a Unity lifecycle command, independent of native CUA window-close policy.
 
-After the controller grants the host and desktop resource window, set
+After the controller grants the host resource window, set
 `UNITY_EDITOR` explicitly and run
 `vx just launch-owned-editor <fresh-32-hex-run-id> <candidate-receipt>`.
 The controller must first verify the exact-head CI and native artifact, then
 freeze a receipt containing `source_commit`, `exact_head_ci="success"`,
 `native_dll_sha256` and `native_dll_artifact_id`. Launch verifies the actual
 HEAD, clean source tree and DLL against that receipt and records their identity.
-The existing launcher refuses any running Editor and an existing evidence
-directory. It passes `-auroraviewOwnedTest`, opts into AgentEndpoint, and writes
+The launcher refuses a running Editor for the same canonical project or owned
+run ID, and refuses an existing evidence directory. Unrelated Editors can run
+concurrently; unavailable or ambiguous process arguments leave the conflict
+unknown and refuse launch. It passes `-auroraviewOwnedTest`, opts into AgentEndpoint, and writes
 `owned-editor-owner.json` and `owned-editor-launch.json`. It does not establish
 UI acceptance, automatically end the Editor, or activate a license.
+Physical UI observation and input additionally require a desktop resource grant.
+
+For an independent project, pass the optional third `project_path` argument:
+`vx just launch-owned-editor <run-id> <candidate-receipt> <project-path>`.
+Omitting it retains `Samples~/SceneTools`. An explicit project requires four
+additional receipt fields: `project_path`, `evidence_dir`,
+`project_manifest_sha256` and `project_version_sha256`. The paths must match the
+canonical project and output selected by `AURORAVIEW_UNITY_EVIDENCE_DIR` (or the
+default fresh run directory); the hashes bind `Packages/manifest.json` and
+`ProjectSettings/ProjectVersion.txt`. The project's local `file:` dependency for
+`com.auroraview.unity` must resolve to the reviewed package checkout. Its `Assets`
+directory must exist. The launch receipt records the output and configuration
+hashes alongside the unchanged Editor owner identity.
+
+`vx just test-launcher` checks these production guards using fake process
+metadata and disposable text fixtures, without querying or launching an Editor.
 
 Use `vx just exit-owned-editor <owner-file>` for a bounded one-shot invocation of
 the public Core facade's typed tool. It probes the current session, calls only

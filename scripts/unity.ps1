@@ -1,5 +1,108 @@
-param([ValidateSet('test','accept','agent','core','owned','compile')][string]$Mode = 'test', [string]$Node = 'node', [string]$RunId, [string]$CandidateReceipt)
+param([ValidateSet('test','accept','agent','core','owned','compile')][string]$Mode = 'test', [string]$Node = 'node', [string]$RunId, [string]$CandidateReceipt, [string]$ProjectPath)
 $ErrorActionPreference = 'Stop'
+function Resolve-UnityPath([string]$Path) {
+    $windowsPath = $Path.Replace('/', '\')
+    if ([string]::IsNullOrWhiteSpace($Path) -or
+        ($windowsPath -notmatch '^[A-Za-z]:\\' -and $windowsPath -notmatch '^\\\\[^\\]+\\[^\\]+(?:\\|$)') -or
+        $windowsPath.StartsWith('\\?\') -or $windowsPath.StartsWith('\\.\') -or $windowsPath.StartsWith('\??\')) {
+        throw 'Unity path must be an ordinary absolute drive or UNC path.'
+    }
+    return [IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
+}
+
+function Get-UnityFileSha256([string]$Path) {
+    $hash = [Security.Cryptography.SHA256]::Create()
+    try { return [BitConverter]::ToString($hash.ComputeHash([IO.File]::ReadAllBytes($Path))).Replace('-', '').ToLowerInvariant() }
+    finally { $hash.Dispose() }
+}
+
+function Read-UnityArguments([string]$CommandLine) {
+    if ([string]::IsNullOrWhiteSpace($CommandLine)) { throw 'Running Editor command line is unavailable; launch conflict is unknown.' }
+    if (-not ('UnityLaunchArguments' -as [type])) {
+        Add-Type -TypeDefinition @"
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+public static class UnityLaunchArguments {
+    [DllImport("shell32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern IntPtr CommandLineToArgvW(string commandLine, out int count);
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr LocalFree(IntPtr memory);
+    public static string[] Parse(string commandLine) {
+        int count;
+        IntPtr memory = CommandLineToArgvW(commandLine, out count);
+        if (memory == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
+        try {
+            string[] result = new string[count];
+            for (int index = 0; index < count; ++index)
+                result[index] = Marshal.PtrToStringUni(Marshal.ReadIntPtr(memory, index * IntPtr.Size));
+            return result;
+        } finally { LocalFree(memory); }
+    }
+}
+"@
+    }
+    return [UnityLaunchArguments]::Parse($CommandLine)
+}
+
+function Assert-UnityLaunchAvailable([object[]]$Processes, [string]$Project, [string]$Run) {
+    $expectedProject = Resolve-UnityPath $Project
+    foreach ($running in $Processes) {
+        if (-not $running -or ($running.ProcessId -isnot [int] -and $running.ProcessId -isnot [uint32] -and $running.ProcessId -isnot [long]) -or
+            $running.ProcessId -lt 1 -or $running.CommandLine -isnot [string]) { throw 'Running Editor metadata is unavailable; launch conflict is unknown.' }
+        $tokens = @(Read-UnityArguments $running.CommandLine)
+        $projectFlags = @(for ($index = 1; $index -lt $tokens.Count; ++$index) {
+            if ([string]::Equals($tokens[$index], '-projectPath', [StringComparison]::OrdinalIgnoreCase)) { $index }
+        })
+        $runFlags = @(for ($index = 1; $index -lt $tokens.Count; ++$index) {
+            if ([string]::Equals($tokens[$index], '-auroraviewOwnedTest', [StringComparison]::OrdinalIgnoreCase)) { $index }
+        })
+        if ($projectFlags.Count -ne 1 -or $projectFlags[0] + 1 -ge $tokens.Count -or $runFlags.Count -gt 1) {
+            throw 'Running Editor project or owned-instance arguments are ambiguous; no Editor launched.'
+        }
+        $runningProject = Resolve-UnityPath $tokens[$projectFlags[0] + 1]
+        if ([string]::Equals($runningProject, $expectedProject, [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'An Editor already owns the requested project; no owned test Editor launched.'
+        }
+        if ($runFlags.Count) {
+            if ($runFlags[0] + 1 -ge $tokens.Count -or $tokens[$runFlags[0] + 1] -cnotmatch '^[a-f0-9]{32}$') {
+                throw 'Running Editor owned-instance arguments are invalid; no Editor launched.'
+            }
+            if ($tokens[$runFlags[0] + 1] -ceq $Run) { throw 'An Editor already owns the requested run ID; no owned test Editor launched.' }
+        }
+    }
+}
+
+function Assert-OwnedProject([string]$Root, [string]$Project, [string]$Output, [object]$Candidate, [bool]$ExplicitProject) {
+    $bound = $ExplicitProject -or $null -ne $Candidate.project_path -or $null -ne $Candidate.evidence_dir -or
+        $null -ne $Candidate.project_manifest_sha256 -or $null -ne $Candidate.project_version_sha256
+    if (-not $bound) { return }
+    if ($Candidate.project_path -isnot [string] -or $Candidate.evidence_dir -isnot [string] -or
+        $Candidate.project_manifest_sha256 -isnot [string] -or $Candidate.project_manifest_sha256 -cnotmatch '^[a-f0-9]{64}$' -or
+        $Candidate.project_version_sha256 -isnot [string] -or $Candidate.project_version_sha256 -cnotmatch '^[a-f0-9]{64}$' -or
+        -not [string]::Equals((Resolve-UnityPath $Candidate.project_path), $Project, [StringComparison]::OrdinalIgnoreCase) -or
+        -not [string]::Equals((Resolve-UnityPath $Candidate.evidence_dir), $Output, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Owned project and evidence paths must match the reviewed candidate receipt.'
+    }
+    $manifestPath = Join-Path $Project 'Packages/manifest.json'
+    $versionPath = Join-Path $Project 'ProjectSettings/ProjectVersion.txt'
+    if (-not (Test-Path -LiteralPath (Join-Path $Project 'Assets') -PathType Container) -or
+        (Get-UnityFileSha256 $manifestPath) -cne $Candidate.project_manifest_sha256 -or
+        (Get-UnityFileSha256 $versionPath) -cne $Candidate.project_version_sha256) {
+        throw 'Owned project configuration differs from the reviewed candidate receipt.'
+    }
+    $manifest = [IO.File]::ReadAllText($manifestPath) | ConvertFrom-Json
+    $dependency = $manifest.dependencies.'com.auroraview.unity'
+    if ($dependency -isnot [string] -or -not $dependency.StartsWith('file:', [StringComparison]::Ordinal) -or $dependency.Length -le 5) {
+        throw 'Owned project must reference this reviewed local package.'
+    }
+    $packagePath = $dependency.Substring(5)
+    if (-not [IO.Path]::IsPathRooted($packagePath)) { $packagePath = Join-Path (Join-Path $Project 'Packages') $packagePath }
+    if (-not [string]::Equals((Resolve-UnityPath $packagePath), (Resolve-UnityPath $Root), [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Owned project resolves a different package source.'
+    }
+}
+
 $root = Split-Path -Parent $PSScriptRoot
 $editor = $env:UNITY_EDITOR
 if ($Mode -eq 'owned' -and (-not $editor -or $RunId.Length -ne 32 -or $RunId -cnotmatch '^[a-f0-9]{32}$')) {
@@ -29,7 +132,7 @@ if ($Mode -eq 'compile') {
     vx --cache-mode offline --no-auto-install uv run --offline --no-project --no-sync -- $dotnet $compiler /noconfig ('@' + $response)
     exit $LASTEXITCODE
 }
-$project = Join-Path $root 'Samples~/SceneTools'
+$project = if ($ProjectPath) { Resolve-UnityPath $ProjectPath } else { [IO.Path]::GetFullPath((Join-Path $root 'Samples~/SceneTools')) }
 $output = $env:AURORAVIEW_UNITY_EVIDENCE_DIR
 if (-not $output) { $output = Join-Path $root 'build~/evidence'; if ($Mode -eq 'core') { $output = Join-Path $output 'core' } }
 if ($Mode -eq 'owned') {
@@ -45,13 +148,14 @@ if ($Mode -eq 'owned') {
     if ($LASTEXITCODE -ne 0 -or $sourceHead.Count -ne 1 -or $sourceHead[0] -cne $candidate.source_commit) { throw 'Owned launch source differs from the reviewed CI receipt.' }
     $changes = @(& vx --cache-mode offline --no-auto-install git -C $root status --porcelain)
     if ($LASTEXITCODE -ne 0 -or $changes.Count) { throw 'Owned launch requires the unchanged reviewed source tree.' }
-    $hash = [Security.Cryptography.SHA256]::Create()
-    try { $dll = [BitConverter]::ToString($hash.ComputeHash([IO.File]::ReadAllBytes((Join-Path $root 'Editor/Plugins/x86_64/auroraview_unity.dll')))).Replace('-', '').ToLowerInvariant() }
-    finally { $hash.Dispose() }
+    $dll = Get-UnityFileSha256 (Join-Path $root 'Editor/Plugins/x86_64/auroraview_unity.dll')
     if ($dll -cne $candidate.native_dll_sha256) { throw 'Owned launch native DLL differs from the reviewed artifact.' }
     if (-not $env:AURORAVIEW_UNITY_EVIDENCE_DIR) { $output = Join-Path $output ('owned-' + $RunId) }
+    $project = Resolve-UnityPath $project
+    $output = Resolve-UnityPath $output
+    Assert-OwnedProject $root $project $output $candidate ([bool]$ProjectPath)
     if (Test-Path -LiteralPath $output) { throw 'Owned launch needs a new evidence directory.' }
-    if (@(Get-CimInstance Win32_Process -Filter "Name = 'Unity.exe'").Count) { throw 'An Editor is already running; no owned test Editor launched.' }
+    Assert-UnityLaunchAvailable @(Get-CimInstance Win32_Process -Filter "Name = 'Unity.exe'" -ErrorAction Stop) $project $RunId
 }
 $env:AURORAVIEW_UNITY_EVIDENCE_DIR = $output
 New-Item -ItemType Directory -Force -Path $output | Out-Null
@@ -81,7 +185,7 @@ $process = Start-Process -FilePath $editor -ArgumentList ($arguments | ForEach-O
 if ($Mode -eq 'owned') {
     $owner = [ordered]@{ processId = $process.Id; processCreationFileTime = $process.StartTime.ToFileTimeUtc().ToString([Globalization.CultureInfo]::InvariantCulture); projectPath = [IO.Path]::GetFullPath($project); runId = $RunId }
     $owner | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'owned-editor-owner.json') -Encoding UTF8
-    [ordered]@{ editorOwner = $owner; executable = $editor; arguments = $arguments; log = $log; sourceCommit = $sourceHead[0]; nativeDllSha256 = $dll; nativeDllArtifactId = $candidate.native_dll_artifact_id; candidateReceipt = [IO.Path]::GetFullPath($CandidateReceipt); exitObserved = $false } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $output 'owned-editor-launch.json') -Encoding UTF8
+    [ordered]@{ editorOwner = $owner; executable = $editor; arguments = $arguments; log = $log; sourceCommit = $sourceHead[0]; nativeDllSha256 = $dll; nativeDllArtifactId = $candidate.native_dll_artifact_id; candidateReceipt = [IO.Path]::GetFullPath($CandidateReceipt); evidenceDirectory = $output; projectManifestSha256 = $candidate.project_manifest_sha256; projectVersionSha256 = $candidate.project_version_sha256; exitObserved = $false } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $output 'owned-editor-launch.json') -Encoding UTF8
     Write-Output ("Owned Editor launched; retain its process handle and verify real exit separately: " + $process.Id)
     return
 }
