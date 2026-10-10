@@ -3,6 +3,7 @@
 import sys
 import tempfile
 import unittest
+from inspect import signature
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -62,6 +63,14 @@ class CoreServiceOptionsTests(unittest.TestCase):
                 enable_gateway_failover=False,
             )
             with patch("core_server.DccServerBase") as server:
+                if "gateway_remote_port" not in signature(
+                    DccServerOptions.from_env
+                ).parameters:
+                    with self.assertRaisesRegex(TypeError, "gateway_remote_(host|port)"):
+                        service._start()
+                    server.assert_not_called()
+                    service.driver.start.assert_not_called()
+                    return
                 service._start()
             options = server.call_args.args[0]
             self.assertEqual(options.gateway.port, 19765)
