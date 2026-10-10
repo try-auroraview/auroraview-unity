@@ -4,7 +4,7 @@
 
 Scene Tools 示例可以创建真实立方体、读取场景与选择、选择已有对象。所有场景操作都由 Unity 主线程执行，创建支持 Undo。Microsoft WebView2 是 EditorWindow 内的原生子 HWND；不会用外部浏览器窗口冒充嵌入。
 
-[English](README.md) · [架构边界](docs/architecture.md) · [验收状态](docs/validation.md)
+[English](README.md) · [架构边界](docs/architecture.md) · [验收状态](docs/validation.md) · [官方 DCC-MCP 面板](docs/official-unity.md)
 
 ## 运行示例
 

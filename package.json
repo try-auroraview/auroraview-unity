@@ -8,5 +8,10 @@
   "author": { "name": "AuroraView", "url": "https://github.com/try-auroraview" },
   "documentationUrl": "https://github.com/try-auroraview/auroraview-unity#readme",
   "repository": { "type": "git", "url": "https://github.com/try-auroraview/auroraview-unity.git" },
-  "keywords": ["editor", "webview2", "auroraview", "mcp"]
+  "keywords": ["editor", "webview2", "auroraview", "mcp"],
+  "samples": [{
+    "displayName": "Official DCC-MCP Scene Tools",
+    "description": "Optional panel using the installed official DCC-MCP Unity command dispatcher.",
+    "path": "Samples~/DccMcpSceneTools"
+  }]
 }

@@ -7,6 +7,7 @@ namespace AuroraView.Unity
 {
     internal sealed class NativeView : IDisposable
     {
+        internal const int ScriptLimit = 1024 * 1024;
         private uint handle;
         private readonly StringBuilder buffer = new StringBuilder(65537);
         internal NativeView(IntPtr parent, string url, string dataDirectory)
@@ -27,6 +28,8 @@ namespace AuroraView.Unity
         }
         internal void Evaluate(string script)
         {
+            if (script == null || script.Length > ScriptLimit)
+                throw new ArgumentException("Native script exceeds the 1 Mi character limit.", nameof(script));
             if (av_eval(handle, script) == 0) throw new InvalidOperationException("Native script queue is full or closed.");
         }
         public void Dispose() { if (handle != 0) { av_destroy(handle); handle = 0; } }

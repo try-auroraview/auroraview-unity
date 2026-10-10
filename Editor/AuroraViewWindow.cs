@@ -13,6 +13,9 @@ namespace AuroraView.Unity
         private double lastPaint;
         private IntPtr parent;
         private Rect viewport;
+        [SerializeField] private string page;
+        [SerializeField] private bool customCalls;
+        [NonSerialized] private Func<string, string> callHandler;
         public bool NativeReady => view != null && view.State == 1;
         public bool BrowserRoundTrip { get; private set; }
         public int BrowserCreatedObjectId { get; private set; }
@@ -23,7 +26,25 @@ namespace AuroraView.Unity
         public static AuroraViewWindow Open()
         {
             var window = GetWindow<AuroraViewWindow>("AuroraView", true, typeof(SceneView));
+            if (window.customCalls) { window.Release(); window.error = null; }
+            window.customCalls = false;
+            window.page = null;
+            window.callHandler = null;
             window.titleContent = new GUIContent("AuroraView");
+            window.minSize = new Vector2(360, 300);
+            window.Show();
+            return window;
+        }
+        public static AuroraViewWindow Open(string title, string htmlPath, Func<string, string> handler)
+        {
+            if (handler == null) throw new ArgumentNullException(nameof(handler));
+            if (string.IsNullOrWhiteSpace(htmlPath) || !File.Exists(htmlPath))
+                throw new ArgumentException("The panel requires an existing HTML file.", nameof(htmlPath));
+            var window = CreateInstance<AuroraViewWindow>();
+            window.page = Path.GetFullPath(htmlPath);
+            window.customCalls = true;
+            window.callHandler = handler;
+            window.titleContent = new GUIContent(title);
             window.minSize = new Vector2(360, 300);
             window.Show();
             return window;
@@ -56,6 +77,8 @@ namespace AuroraView.Unity
             }
             if (Application.platform != RuntimePlatform.WindowsEditor)
             { EditorGUILayout.HelpBox("The native panel currently requires Windows Editor x64.", MessageType.Info); return; }
+            if (customCalls && callHandler == null)
+            { EditorGUILayout.HelpBox("Reopen this integration from its menu after assembly reload.", MessageType.Info); return; }
             if (!string.IsNullOrEmpty(LastError))
             { EditorGUILayout.HelpBox(LastError + "\nBuild/install the native plugin and restart the Editor.", MessageType.Error); return; }
             var area = GUILayoutUtility.GetRect(0, 100000, 0, 100000, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
@@ -74,7 +97,7 @@ namespace AuroraView.Unity
                 if (view == null)
                 {
                     var package = PackageInfo.FindForAssembly(typeof(AuroraViewWindow).Assembly);
-                    var html = Path.Combine(package.resolvedPath, "Editor/WebAssets/index.html");
+                    var html = customCalls ? page : Path.Combine(package.resolvedPath, "Editor/WebAssets/index.html");
                     var cache = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                         "AuroraView/Unity", System.Diagnostics.Process.GetCurrentProcess().Id.ToString());
                     view = new NativeView(parent, new Uri(html).AbsoluteUri, cache);
@@ -96,15 +119,34 @@ namespace AuroraView.Unity
                 if (json.StartsWith(prefix, StringComparison.Ordinal))
                 { if (int.TryParse(json.Substring(prefix.Length), out var objectId)) BrowserCreatedObjectId = objectId; continue; }
                 // Upstream ready/events are not RPC calls and need no call-result response.
-                try { if (JsonUtility.FromJson<CallRequest>(json)?.type != "call") continue; }
+                CallRequest request;
+                try { request = JsonUtility.FromJson<CallRequest>(json); if (request?.type != "call") continue; }
                 catch (ArgumentException) { continue; }
-                var response = SceneContracts.Dispatch(json);
-                view.Evaluate("window.auroraview.trigger('__auroraview_call_result'," + response + ");");
+                string response;
+                try
+                {
+                    if (customCalls && callHandler == null) throw new InvalidOperationException("Reopen the integration after assembly reload.");
+                    response = customCalls ? callHandler(json) : SceneContracts.Dispatch(json);
+                }
+                catch (Exception exception)
+                {
+                    response = JsonUtility.ToJson(new CallFailure { id = request.id, error = new CallError
+                        { code = "handler_error", message = exception.Message } });
+                }
+                var script = "window.auroraview.trigger('__auroraview_call_result'," + response + ");";
+                if (script.Length > NativeView.ScriptLimit)
+                {
+                    response = JsonUtility.ToJson(new CallFailure { id = request.id, error = new CallError
+                        { code = "panel_response_too_large", message = "The full response exceeds the panel limit; no items were returned." } });
+                    script = "window.auroraview.trigger('__auroraview_call_result'," + response + ");";
+                }
+                try { view.Evaluate(script); }
+                catch (Exception exception) { error = exception.Message; Release(); return; }
             }
         }
         private void PublishContext()
         {
-            if (!NativeReady) return;
+            if (!NativeReady || customCalls) return;
             var context = SceneContracts.ReadContext();
             view.Evaluate("window.auroraview.trigger('scene.selection'," + JsonUtility.ToJson(context) + ");");
         }
