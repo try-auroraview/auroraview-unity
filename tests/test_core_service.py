@@ -26,7 +26,15 @@ class CoreServiceOptionsTests(unittest.TestCase):
         return CoreService(1234, state, **kwargs)
 
     def test_default_none_omits_new_keyword_for_published_core(self):
-        for kwargs in ({}, {"ui_control": None}):
+        for kwargs in (
+            {},
+            {"ui_control": None},
+            {
+                "gateway_remote_host": None,
+                "gateway_remote_port": None,
+                "enable_gateway_failover": None,
+            },
+        ):
             with self.subTest(kwargs=kwargs), tempfile.TemporaryDirectory() as state:
                 service = self.prepare(state, **kwargs)
                 with patch(
@@ -35,11 +43,44 @@ class CoreServiceOptionsTests(unittest.TestCase):
                 ) as from_env:
                     service._start()
                 self.assertNotIn("ui_control", from_env.call_args.kwargs)
+                self.assertNotIn("gateway_remote_host", from_env.call_args.kwargs)
+                self.assertNotIn("gateway_remote_port", from_env.call_args.kwargs)
+                self.assertNotIn("enable_gateway_failover", from_env.call_args.kwargs)
                 self.assertIsNone(service.ui_control)
                 self.assertEqual(
                     from_env.call_args.args[1], Path(state).resolve() / "skills"
                 )
                 service.driver.start.assert_not_called()
+
+    def test_private_gateway_keeps_registration_and_disables_remote_and_daemon(self):
+        with tempfile.TemporaryDirectory() as state:
+            service = self.prepare(
+                state,
+                gateway_port=19765,
+                gateway_remote_host="127.0.0.1",
+                gateway_remote_port=0,
+                enable_gateway_failover=False,
+            )
+            with patch("core_server.DccServerBase") as server:
+                service._start()
+            options = server.call_args.args[0]
+            self.assertEqual(options.gateway.port, 19765)
+            self.assertEqual(options.gateway.remote_host, "127.0.0.1")
+            self.assertEqual(options.gateway.remote_port, 0)
+            self.assertIs(options.gateway.enable_failover, False)
+            self.assertEqual(
+                Path(options.gateway.registry_dir), Path(state).resolve() / "registry"
+            )
+            self.assertEqual(options.gateway.dcc_version, "test")
+            service.driver.start.assert_not_called()
+
+    def test_invalid_remote_port_is_rejected_before_server_creation(self):
+        with tempfile.TemporaryDirectory() as state:
+            service = self.prepare(state, gateway_remote_port=True)
+            with patch("core_server.DccServerBase") as server:
+                with self.assertRaises((TypeError, ValueError)):
+                    service._start()
+            server.assert_not_called()
 
     def test_explicit_runtime_options_forward_identity_and_existing_scope(self):
         runtime_options = object()

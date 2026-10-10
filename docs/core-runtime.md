@@ -41,6 +41,25 @@ The pipe grants access only to the current Windows user. The consumer probes `sc
 
 The Python transport reuses the existing Node `pipeCall` through a bounded one-shot client. It does not run `agent/server.mjs` as an MCP server. Pipe calls have a 12-second deadline, the Python child has a 14-second deadline and is killed/reaped on timeout. Unity skips queued requests after its 10-second dispatch timeout. Already-running native scene operations cannot be safely preempted; the three operations remain bounded.
 
+## Trusted private gateway bootstrap
+
+An owner evaluating a qualified Core build with typed remote gateway options can explicitly select a private gateway:
+
+```python
+service = CoreService(
+    editor_pid,
+    isolated_state,
+    gateway_port=private_gateway_port,
+    gateway_remote_host="127.0.0.1",
+    gateway_remote_port=0,
+    enable_gateway_failover=False,
+)
+```
+
+The main gateway port must be a positive, unused private port to obtain Core's registered `instance_id`. Setting the main port to zero disables registration and returns no UUID. The separate remote port of zero disables only the second listener. Disabling failover skips Python's detached gateway daemon while retaining native registration in the owned Core process. The registry remains under `isolated_state/registry`.
+
+The three new keywords default to `None` and are omitted unless explicitly supplied, preserving the fixed public dependency path. The owner must verify its qualified Core build, actual UUID and listener ownership, then read back registry removal and socket release after stopping. Option forwarding and a successful stop call alone do not prove those runtime outcomes.
+
 ## Trusted UI bootstrap
 
 An owner evaluating a Core version that supports `UiControlRuntimeOptions` can supply that typed object through `CoreService(..., ui_control=options, skill_root=canonical_skill_root)`. The owner selects and verifies the runtime executable, hash, exact version and bounded action scope before starting a new service. `skill_root` must be an existing canonical Core skill directory; Core receives it through its public built-in skill discovery argument. On the service's registered execution lane, call `server.skill_discovery.register_builtin_actions(include_bundled=False)` and `server.load_skill("ui-control")` before discovering its tools. Disable default and accumulated skill paths when isolating an evaluation.

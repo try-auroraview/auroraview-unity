@@ -39,6 +39,9 @@ class CoreService:
         transport=None,
         node="node",
         gateway_port=None,
+        gateway_remote_host=None,
+        gateway_remote_port=None,
+        enable_gateway_failover=None,
         ui_control=None,
         skill_root=None,
         editor_owner=None,
@@ -48,6 +51,9 @@ class CoreService:
         self.transport = transport
         self.node = node
         self.gateway_port = gateway_port
+        self.gateway_remote_host = gateway_remote_host
+        self.gateway_remote_port = gateway_remote_port
+        self.enable_gateway_failover = enable_gateway_failover
         self.ui_control = ui_control
         self.skill_root = Path(skill_root).resolve() if skill_root is not None else None
         self.editor_owner = editor_owner
@@ -79,9 +85,15 @@ class CoreService:
         self.tools = SceneTools(
             self.pid, self.transport, node=self.node, editor_owner=self.editor_owner
         )
-        # Runtime selection and authority belong to trusted bootstrap. Omitting
-        # this keyword preserves the published Core 0.20.41 constructor path.
+        # Runtime and gateway selection belong to trusted bootstrap. Omitting
+        # optional keywords preserves the published Core 0.20.41 constructor.
         options = {} if self.ui_control is None else {"ui_control": self.ui_control}
+        if self.gateway_remote_host is not None:
+            options["gateway_remote_host"] = self.gateway_remote_host
+        if self.gateway_remote_port is not None:
+            options["gateway_remote_port"] = self.gateway_remote_port
+        if self.enable_gateway_failover is not None:
+            options["enable_gateway_failover"] = self.enable_gateway_failover
         self.server = DccServerBase(
             DccServerOptions.from_env(
                 "unity",
