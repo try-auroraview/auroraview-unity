@@ -21,9 +21,11 @@ namespace AuroraView.Unity
             public string request;
             public string response;
             public volatile bool cancelled;
+            public CallRequest exitRequest;
             public readonly ManualResetEventSlim ready = new ManualResetEventSlim(false);
         }
         private static readonly ConcurrentQueue<Pending> Requests = new ConcurrentQueue<Pending>();
+        private static readonly ConcurrentQueue<CallRequest> Exits = new ConcurrentQueue<CallRequest>();
         private static readonly object Lifecycle = new object();
         private static NamedPipeServerStream pipe;
         private static Thread worker;
@@ -86,6 +88,7 @@ namespace AuroraView.Unity
                 connection = pipe;
                 while (Requests.TryDequeue(out var request))
                 { request.cancelled = true; request.response = "{\"ok\":false,\"error\":{\"message\":\"Editor endpoint closed\"}}"; request.ready.Set(); }
+                while (Exits.TryDequeue(out _)) { }
             }
             connection?.Dispose();
             if (previous != null && !previous.Join(2000))
@@ -94,10 +97,15 @@ namespace AuroraView.Unity
         }
         private static void Tick()
         {
+            if (Exits.TryDequeue(out var exit))
+            {
+                try { OwnedEditorExit.Exit(exit); }
+                catch (Exception failure) { RecordError(failure.Message); }
+            }
             var error = Interlocked.Exchange(ref transportError, null);
             if (error != null) Debug.LogError("AuroraView agent transport: " + error);
             for (var count = 0; count < 16 && Requests.TryDequeue(out var request); count++)
-            { if (!stopping && !request.cancelled) request.response = SceneContracts.Dispatch(request.request); request.ready.Set(); }
+            { if (!stopping && !request.cancelled) request.response = SceneContracts.Dispatch(request.request, ownedExit => request.exitRequest = ownedExit); request.ready.Set(); }
         }
         private static void RecordError(string error)
         {
@@ -123,7 +131,12 @@ namespace AuroraView.Unity
                             var pending = new Pending { request = json };
                             lock (Lifecycle)
                             { if (stopping) break; Requests.Enqueue(pending); }
-                            if (pending.ready.Wait(TimeSpan.FromSeconds(10))) writer.WriteLine(pending.response);
+                            if (pending.ready.Wait(TimeSpan.FromSeconds(10)))
+                            {
+                                writer.WriteLine(pending.response);
+                                lock (Lifecycle)
+                                    if (!stopping && pending.exitRequest != null) Exits.Enqueue(pending.exitRequest);
+                            }
                             else { pending.cancelled = true; writer.WriteLine("{\"ok\":false,\"error\":{\"message\":\"Editor main-thread timeout\"}}"); }
                         }
                     }

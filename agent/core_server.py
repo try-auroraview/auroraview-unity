@@ -39,16 +39,24 @@ class CoreService:
         transport=None,
         node="node",
         gateway_port=None,
+        gateway_remote_host=None,
+        gateway_remote_port=None,
+        enable_gateway_failover=None,
         ui_control=None,
         skill_root=None,
+        editor_owner=None,
     ):
         self.pid = pid
         self.state_dir = Path(state_dir).resolve()
         self.transport = transport
         self.node = node
         self.gateway_port = gateway_port
+        self.gateway_remote_host = gateway_remote_host
+        self.gateway_remote_port = gateway_remote_port
+        self.enable_gateway_failover = enable_gateway_failover
         self.ui_control = ui_control
         self.skill_root = Path(skill_root).resolve() if skill_root is not None else None
+        self.editor_owner = editor_owner
         self.queue = QueueDispatcher()
         self.driver = StandaloneHost(self.queue, thread_name="auroraview-unity-core")
         self.server = None
@@ -74,10 +82,18 @@ class CoreService:
             skills.mkdir(exist_ok=True)
         elif not skills.is_dir():
             raise ValueError("The owner-selected skill root must exist")
-        self.tools = SceneTools(self.pid, self.transport, node=self.node)
-        # Runtime selection and authority belong to trusted bootstrap. Omitting
-        # this keyword preserves the published Core 0.20.41 constructor path.
+        self.tools = SceneTools(
+            self.pid, self.transport, node=self.node, editor_owner=self.editor_owner
+        )
+        # Runtime and gateway selection belong to trusted bootstrap. Omitting
+        # optional keywords preserves the published Core 0.20.41 constructor.
         options = {} if self.ui_control is None else {"ui_control": self.ui_control}
+        if self.gateway_remote_host is not None:
+            options["gateway_remote_host"] = self.gateway_remote_host
+        if self.gateway_remote_port is not None:
+            options["gateway_remote_port"] = self.gateway_remote_port
+        if self.enable_gateway_failover is not None:
+            options["enable_gateway_failover"] = self.enable_gateway_failover
         self.server = DccServerBase(
             DccServerOptions.from_env(
                 "unity",
@@ -135,11 +151,25 @@ def main():
     parser.add_argument("--pid", type=int, required=True)
     parser.add_argument("--state-dir", type=Path, required=True)
     parser.add_argument("--node", default="node")
+    parser.add_argument(
+        "--editor-owner-file",
+        type=Path,
+        help="Explicit owned-test launch identity; enables editor.exit only for that Editor",
+    )
     args = parser.parse_args()
     stopped = threading.Event()
     signal.signal(signal.SIGINT, lambda *_: stopped.set())
     signal.signal(signal.SIGTERM, lambda *_: stopped.set())
-    with CoreService(args.pid, args.state_dir, node=args.node) as service:
+    owner = None
+    if args.editor_owner_file:
+        with args.editor_owner_file.open("rb") as stream:
+            data = stream.read(65537)
+        if len(data) > 65536:
+            parser.error("Editor owner file exceeds 64 KiB")
+        owner = json.loads(data.decode("utf-8-sig"))
+    with CoreService(
+        args.pid, args.state_dir, node=args.node, editor_owner=owner
+    ) as service:
         print(
             json.dumps(
                 {

@@ -1,6 +1,7 @@
 """Offline consumer contracts; no Editor, service or network is started."""
 
 import json
+import io
 import subprocess
 import sys
 import unittest
@@ -10,6 +11,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
 from auroraview_dcc_mcp import ClosedError, ContractError
 from core import PipeTransport, SceneTools
+import core
 
 
 class Host:
@@ -78,8 +80,9 @@ class ConsumerTests(unittest.TestCase):
             ("scene.create_cube", {"script": "bad"}),
             ("scene.select", {"objectId": "7"}),
         ]:
-            with self.subTest(method=method, arguments=arguments), self.assertRaises(
-                ContractError
+            with (
+                self.subTest(method=method, arguments=arguments),
+                self.assertRaises(ContractError),
             ):
                 self.tools.owner.call(method, arguments)
         self.assertEqual(len(self.host.calls), 1)
@@ -122,6 +125,153 @@ class ConsumerTests(unittest.TestCase):
                 SceneTools(pid, self.host)
 
 
+class EditorExitTests(unittest.TestCase):
+    def setUp(self):
+        self.host = Host()
+        self.owner = {
+            "processId": 1234,
+            "processCreationFileTime": "134000000000000000",
+            "projectPath": str(Path.cwd()),
+            "runId": "a" * 32,
+        }
+
+    def transport(self, request):
+        response = self.host(request)
+        response["result"]["editorOwner"] = dict(self.owner)
+        response["result"]["exitRequested"] = request["method"] == "editor.exit"
+        return response
+
+    def test_exit_is_opt_in_and_bound_to_owner_session(self):
+        tools = SceneTools(1234, self.transport, editor_owner=dict(self.owner))
+        self.addCleanup(tools.close)
+        self.assertEqual(tools.owner.list_tools()[-1]["name"], "editor.exit")
+        result = tools.owner.call("editor.exit")
+        self.assertTrue(result["exitRequested"])
+        self.assertEqual(self.host.calls[-1]["params"], {"owner": self.owner})
+        self.assertEqual(self.host.calls[-1]["sessionId"], self.host.session)
+        with self.assertRaises(ContractError):
+            tools.owner.call("editor.exit", {"owner": self.owner})
+
+    def test_context_preserves_all_exit_blockers_without_requesting_exit(self):
+        status = {
+            "sampledAtUtc": "2026-10-10T03:00:00.0000000Z",
+            "isCompiling": True,
+            "isUpdating": True,
+            "isPlayingOrWillChangePlaymode": True,
+            "dirtyScenes": [{"name": "Untitled", "path": "", "handle": -1}],
+            "dirtyPersistentAssets": [
+                {"instanceId": -2, "path": "", "type": "Material", "name": ""}
+            ],
+            "unsavedWindows": [{"instanceId": -3, "type": "TestWindow"}],
+            "prefabStage": {
+                "isOpen": True,
+                "assetPath": "",
+                "scenePath": "",
+                "rootInstanceId": -4,
+            },
+            "editorOwner": dict(self.owner),
+            "sessionId": self.host.session,
+            "mainThreadId": 1,
+        }
+
+        expected_status = json.loads(json.dumps(status))
+
+        def transport(request):
+            response = self.transport(request)
+            response["result"]["editorStatus"] = status
+            return response
+
+        for editor_owner in (None, dict(self.owner)):
+            with self.subTest(owned=editor_owner is not None):
+                first_call = len(self.host.calls)
+                tools = SceneTools(1234, transport, editor_owner=editor_owner)
+                self.addCleanup(tools.close)
+                result = tools.owner.call("scene.context")
+                self.assertEqual(tools.context["editorStatus"], expected_status)
+                self.assertEqual(result["editorStatus"], expected_status)
+                self.assertEqual(result["editorOwner"], status["editorOwner"])
+                self.assertEqual(result["sessionId"], status["sessionId"])
+                self.assertEqual(result["mainThreadId"], status["mainThreadId"])
+                contracts = tools.owner.list_tools()
+                expected = ["scene.context", "scene.create_cube", "scene.select"]
+                if editor_owner is not None:
+                    expected.append("editor.exit")
+                self.assertEqual([item["name"] for item in contracts], expected)
+                self.assertTrue(contracts[0]["annotations"]["readOnlyHint"])
+                self.assertFalse(contracts[0]["annotations"]["destructiveHint"])
+                self.assertTrue(contracts[0]["annotations"]["idempotentHint"])
+                self.assertEqual(
+                    [item["method"] for item in self.host.calls[first_call:]],
+                    ["scene.context", "scene.context"],
+                )
+                self.assertTrue(
+                    all(item["params"] == {} for item in self.host.calls[first_call:])
+                )
+                self.assertEqual(self.host.created, [])
+
+    def test_foreign_or_incomplete_launch_identity_cannot_attach_exit(self):
+        for change in (
+            {"processId": True},
+            {"processCreationFileTime": 134000000000000000},
+            {"processCreationFileTime": "1e17"},
+            {"projectPath": "relative"},
+            {"runId": None},
+            {"runId": "b" * 32},
+            {"extra": "script"},
+        ):
+            with self.subTest(change=change), self.assertRaises(ContractError):
+                SceneTools(1234, self.transport, editor_owner={**self.owner, **change})
+
+    def test_ordinary_owner_does_not_expose_exit(self):
+        tools = SceneTools(1234, self.transport)
+        self.addCleanup(tools.close)
+        with self.assertRaises(ContractError):
+            tools.owner.call("editor.exit")
+        self.assertEqual(len(self.host.calls), 1)
+
+    def test_one_shot_cli_calls_only_the_owned_exit_and_closes_owner(self):
+        with (
+            patch("core.argparse.ArgumentParser.parse_args") as args,
+            patch("core.SceneTools") as tools,
+            patch("sys.stdout", new_callable=io.StringIO),
+        ):
+            args.return_value.owner_file.open.return_value.__enter__.return_value.read.return_value = json.dumps(
+                self.owner
+            ).encode()
+            args.return_value.node = "owned-node"
+            tools.return_value.owner.call.return_value = {"exitRequested": True}
+            core.main()
+        tools.assert_called_once_with(1234, node="owned-node", editor_owner=self.owner)
+        tools.return_value.owner.call.assert_called_once_with("editor.exit")
+        tools.return_value.close.assert_called_once_with()
+
+    def test_one_shot_cli_closes_owner_when_exit_is_refused(self):
+        with (
+            patch("core.argparse.ArgumentParser.parse_args") as args,
+            patch("core.SceneTools") as tools,
+        ):
+            args.return_value.owner_file.open.return_value.__enter__.return_value.read.return_value = json.dumps(
+                self.owner
+            ).encode()
+            tools.return_value.owner.call.side_effect = ContractError("unsaved work")
+            with self.assertRaisesRegex(ContractError, "unsaved work"):
+                core.main()
+        tools.return_value.close.assert_called_once_with()
+
+    def test_one_shot_cli_rejects_unbounded_or_nonobject_owner_before_probe(self):
+        for data in (b"x" * 65537, b"[]"):
+            with (
+                self.subTest(size=len(data)),
+                patch("core.argparse.ArgumentParser.parse_args") as args,
+                patch("core.SceneTools") as tools,
+                patch("sys.stderr", new_callable=io.StringIO),
+            ):
+                args.return_value.owner_file.open.return_value.__enter__.return_value.read.return_value = data
+                with self.assertRaises(SystemExit):
+                    core.main()
+            tools.assert_not_called()
+
+
 class TransportTests(unittest.TestCase):
     def test_timeout_stops_owned_one_shot_client(self):
         with patch(
@@ -148,8 +298,9 @@ class TransportTests(unittest.TestCase):
         self.assertIn("立方体", run.call_args.kwargs["input"])
 
     def test_oversize_request_is_rejected_before_process_creation(self):
-        with patch("core.subprocess.run") as run, self.assertRaisesRegex(
-            ContractError, "64 KiB"
+        with (
+            patch("core.subprocess.run") as run,
+            self.assertRaisesRegex(ContractError, "64 KiB"),
         ):
             PipeTransport(1234)({"value": "立" * 30000})
         run.assert_not_called()
@@ -160,8 +311,9 @@ class TransportTests(unittest.TestCase):
                 "core.subprocess.run",
                 return_value=subprocess.CompletedProcess([], 0, data, ""),
             ):
-                with self.subTest(data_length=len(data)), self.assertRaises(
-                    ContractError
+                with (
+                    self.subTest(data_length=len(data)),
+                    self.assertRaises(ContractError),
                 ):
                     PipeTransport(1234)({})
 

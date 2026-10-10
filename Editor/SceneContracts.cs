@@ -7,7 +7,7 @@ using UnityEngine.SceneManagement;
 
 namespace AuroraView.Unity
 {
-    [Serializable] public sealed class CallParameters { public string name; public int objectId; }
+    [Serializable] public sealed class CallParameters { public string name; public int objectId; public EditorOwner owner; }
     [Serializable] public sealed class CallRequest
     {
         public string type;
@@ -32,7 +32,12 @@ namespace AuroraView.Unity
         public int processId;
         public int mainThreadId;
         public ObjectInfo[] selection;
+        public int selectionTotal;
+        public bool contextIncomplete;
         public ObjectInfo created;
+        public EditorOwner editorOwner;
+        public EditorStatus editorStatus;
+        public bool exitRequested;
     }
     [Serializable] public sealed class CallSuccess { public string id; public bool ok = true; public HostResult result; }
     [Serializable] public sealed class CallError { public string code; public string message; }
@@ -42,9 +47,10 @@ namespace AuroraView.Unity
     [InitializeOnLoad]
     public static class SceneContracts
     {
-        public static string SessionId { get; private set; } = Guid.NewGuid().ToString("N");
+        public static string SessionId { get; private set; }
+        static SceneContracts() { SessionId = Guid.NewGuid().ToString("N"); }
         public static readonly int MainThreadId = Thread.CurrentThread.ManagedThreadId;
-        public static readonly string[] Methods = { "scene.context", "scene.create_cube", "scene.select" };
+        public static readonly string[] Methods = { "scene.context", "scene.create_cube", "scene.select", "editor.exit" };
 
         internal static void RenewSession()
         {
@@ -53,7 +59,9 @@ namespace AuroraView.Unity
             SessionId = Guid.NewGuid().ToString("N");
         }
 
-        public static string Dispatch(string json)
+        public static string Dispatch(string json) { return Dispatch(json, null); }
+
+        internal static string Dispatch(string json, Action<CallRequest> requestExit)
         {
             if (Thread.CurrentThread.ManagedThreadId != MainThreadId)
                 throw new InvalidOperationException("Unity contracts require the Editor main thread.");
@@ -66,20 +74,21 @@ namespace AuroraView.Unity
                     throw new ArgumentException("Expected a call with a bounded nonempty id.");
                 if (!string.IsNullOrEmpty(request.sessionId) && request.sessionId != SessionId)
                     throw new InvalidOperationException("Unity session expired; explicitly attach the current Editor session.");
+                if (request.method == "editor.exit")
+                {
+                    if (requestExit == null) throw new InvalidOperationException("Editor exit is available only through the opted-in agent endpoint.");
+                    OwnedEditorExit.Validate(request);
+                }
                 var result = Execute(request.method, request.@params ?? new CallParameters());
-                return JsonUtility.ToJson(new CallSuccess { id = request.id, result = result });
+                if (request.method == "editor.exit") result.exitRequested = true;
+                var response = ContextResponse.Serialize(request.id, result);
+                if (request.method == "editor.exit") requestExit(request);
+                return response;
             }
             catch (Exception error)
             {
-                return JsonUtility.ToJson(new CallFailure
-                {
-                    id = request != null ? request.id : null,
-                    error = new CallError
-                    {
-                        code = error is MissingMethodException ? "METHOD_NOT_FOUND" : "INVALID_REQUEST",
-                        message = error.Message
-                    }
-                });
+                return ContextResponse.Failure(request != null ? request.id : null,
+                    error is MissingMethodException ? "METHOD_NOT_FOUND" : "INVALID_REQUEST", error.Message);
             }
         }
 
@@ -88,7 +97,8 @@ namespace AuroraView.Unity
             ObjectInfo created = null;
             switch (method)
             {
-                case "scene.context": break;
+                case "scene.context":
+                case "editor.exit": break;
                 case "scene.create_cube":
                     if (EditorApplication.isPlayingOrWillChangePlaymode)
                         throw new InvalidOperationException("Scene editing is disabled during Play mode.");
@@ -110,6 +120,23 @@ namespace AuroraView.Unity
                     break;
                 default: throw new MissingMethodException("Method is not registered: " + method);
             }
+            var result = ReadContext();
+            result.created = created;
+            if (method == "scene.context")
+            {
+                var status = OwnedEditorExit.CaptureStatus();
+                result.editorStatus = status;
+                result.editorOwner = status.editorOwner;
+                result.sessionId = status.sessionId;
+                result.mainThreadId = status.mainThreadId;
+            }
+            return result;
+        }
+
+        internal static HostResult ReadContext()
+        {
+            if (Thread.CurrentThread.ManagedThreadId != MainThreadId)
+                throw new InvalidOperationException("Unity context requires the Editor main thread.");
             var selection = Selection.gameObjects;
             var items = new ObjectInfo[selection.Length];
             for (var index = 0; index < selection.Length; index++) items[index] = Describe(selection[index]);
@@ -121,10 +148,10 @@ namespace AuroraView.Unity
                 processId = System.Diagnostics.Process.GetCurrentProcess().Id,
                 mainThreadId = MainThreadId,
                 selection = items,
-                created = created
+                selectionTotal = items.Length,
+                editorOwner = OwnedEditorExit.Current()
             };
         }
-
         private static ObjectInfo Describe(GameObject item)
         {
             var position = item.transform.position;
