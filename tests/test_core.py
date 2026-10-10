@@ -152,6 +152,63 @@ class EditorExitTests(unittest.TestCase):
         with self.assertRaises(ContractError):
             tools.owner.call("editor.exit", {"owner": self.owner})
 
+    def test_context_preserves_all_exit_blockers_without_requesting_exit(self):
+        status = {
+            "sampledAtUtc": "2026-10-10T03:00:00.0000000Z",
+            "isCompiling": True,
+            "isUpdating": True,
+            "isPlayingOrWillChangePlaymode": True,
+            "dirtyScenes": [{"name": "Untitled", "path": "", "handle": -1}],
+            "dirtyPersistentAssets": [
+                {"instanceId": -2, "path": "", "type": "Material", "name": ""}
+            ],
+            "unsavedWindows": [{"instanceId": -3, "type": "TestWindow"}],
+            "prefabStage": {
+                "isOpen": True,
+                "assetPath": "",
+                "scenePath": "",
+                "rootInstanceId": -4,
+            },
+            "editorOwner": dict(self.owner),
+            "sessionId": self.host.session,
+            "mainThreadId": 1,
+        }
+
+        expected_status = json.loads(json.dumps(status))
+
+        def transport(request):
+            response = self.transport(request)
+            response["result"]["editorStatus"] = status
+            return response
+
+        for editor_owner in (None, dict(self.owner)):
+            with self.subTest(owned=editor_owner is not None):
+                first_call = len(self.host.calls)
+                tools = SceneTools(1234, transport, editor_owner=editor_owner)
+                self.addCleanup(tools.close)
+                result = tools.owner.call("scene.context")
+                self.assertEqual(tools.context["editorStatus"], expected_status)
+                self.assertEqual(result["editorStatus"], expected_status)
+                self.assertEqual(result["editorOwner"], status["editorOwner"])
+                self.assertEqual(result["sessionId"], status["sessionId"])
+                self.assertEqual(result["mainThreadId"], status["mainThreadId"])
+                contracts = tools.owner.list_tools()
+                expected = ["scene.context", "scene.create_cube", "scene.select"]
+                if editor_owner is not None:
+                    expected.append("editor.exit")
+                self.assertEqual([item["name"] for item in contracts], expected)
+                self.assertTrue(contracts[0]["annotations"]["readOnlyHint"])
+                self.assertFalse(contracts[0]["annotations"]["destructiveHint"])
+                self.assertTrue(contracts[0]["annotations"]["idempotentHint"])
+                self.assertEqual(
+                    [item["method"] for item in self.host.calls[first_call:]],
+                    ["scene.context", "scene.context"],
+                )
+                self.assertTrue(
+                    all(item["params"] == {} for item in self.host.calls[first_call:])
+                )
+                self.assertEqual(self.host.created, [])
+
     def test_foreign_or_incomplete_launch_identity_cannot_attach_exit(self):
         for change in (
             {"processId": True},

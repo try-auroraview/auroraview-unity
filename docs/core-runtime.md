@@ -41,6 +41,20 @@ The pipe grants access only to the current Windows user. The consumer probes `sc
 
 The Python transport reuses the existing Node `pipeCall` through a bounded one-shot client. It does not run `agent/server.mjs` as an MCP server. Pipe calls have a 12-second deadline, the Python child has a 14-second deadline and is killed/reaped on timeout. Unity skips queued requests after its 10-second dispatch timeout. Already-running native scene operations cannot be safely preempted; the three operations remain bounded.
 
+## Read Editor exit blockers
+
+The existing read-only `scene.context` result adds `editorStatus`; its arguments and the registered tools stay unchanged. Python and Node preserve the complete result, and the WebView continues to render its existing fields. Reading this status never requests exit or changes scene, assets, selection or windows. Selection events retain lightweight context; request `scene.context` for a diagnostic sample.
+
+Unity captures the status on its main thread. `sampledAtUtc` is the actual UTC sample time; `editorOwner`, `sessionId` and `mainThreadId` match the outer context identity. For an explicitly owned test Editor, `editorOwner` includes its PID, native process creation time, project path and run id. Check these identities against the intended Editor before using a diagnostic result.
+
+The snapshot contains `isCompiling`, `isUpdating`, `isPlayingOrWillChangePlaymode`, `dirtyScenes` (name, path, handle), `dirtyPersistentAssets` (instanceId, path, type, name), `unsavedWindows` (instanceId, type) and `prefabStage` (isOpen, assetPath, scenePath, rootInstanceId). Unity object IDs may be negative, and empty paths or names are preserved. A closed Prefab stage has `isOpen=false`, empty paths and `rootInstanceId=0`.
+
+`dirtyScenesTotal`, `dirtyPersistentAssetsTotal` and `unsavedWindowsTotal` report the complete local scan counts; returned arrays may contain fewer entries. Status `incomplete` is true if any diagnostic entry is omitted or its display text is shortened. The outer `selectionTotal` reports the complete selection count, while `contextIncomplete` also covers omitted selection entries, shortened scene/object display text or an incomplete status. Empty returned arrays do not prove clean state when these flags or counts indicate omissions.
+
+Response serialization initially retains at most 32 entries per array and 256 UTF-8 bytes per display string, then reduces them as needed until the entire success JSON, including its envelope, is at most 61,440 UTF-8 bytes. This leaves room for CRLF below the 65,536-byte transport limit. Owner/session/PID/time identity and valid correlation IDs are never shortened. If the identity envelope cannot fit, the existing call-failure shape returns a bounded error message instead of a partial success.
+
+Normal owned `editor.exit` uses the same snapshot logic for its clean-state guard and samples again immediately before quitting. It refuses incomplete status or count/array mismatches and uses a fresh, complete local snapshot. A prior clean diagnostic or exit acknowledgment does not prove process exit or bypass a later blocker. Diagnostic data grants no save, discard, force-exit or retry authority; no operation here clears dirty flags.
+
 ## Trusted private gateway bootstrap
 
 An owner evaluating a qualified Core build with typed remote gateway options can explicitly select a private gateway:

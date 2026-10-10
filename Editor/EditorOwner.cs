@@ -32,6 +32,20 @@ namespace AuroraView.Unity
                 throw new InvalidOperationException("Exit requires the current session and exact owned test Editor PID, birth, project and run.");
         }
 
+        public static void RequireClean(EditorStatus status)
+        {
+            if (status == null || status.dirtyScenes == null || status.dirtyPersistentAssets == null ||
+                status.unsavedWindows == null || status.prefabStage == null || status.incomplete ||
+                status.dirtyScenesTotal != status.dirtyScenes.Length ||
+                status.dirtyPersistentAssetsTotal != status.dirtyPersistentAssets.Length ||
+                status.unsavedWindowsTotal != status.unsavedWindows.Length)
+                throw new InvalidOperationException("Editor status is incomplete; exit refused.");
+            if (status.unsavedWindows.Length != 0 &&
+                (status.dirtyPersistentAssets.Length == 0 || status.firstResourceBlockerIsWindow))
+                throw new InvalidOperationException("Exit refused: an Editor window contains unsaved work.");
+            RequireClean(status.isCompiling || status.isUpdating || status.isPlayingOrWillChangePlaymode,
+                status.dirtyScenes.Length != 0, status.dirtyPersistentAssets.Length != 0, status.prefabStage.isOpen);
+        }
         public static void RequireClean(bool busy, bool dirtyScene, bool dirtyAsset, bool prefabStage)
         {
             if (busy || dirtyScene || dirtyAsset || prefabStage)

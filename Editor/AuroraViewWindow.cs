@@ -105,8 +105,8 @@ namespace AuroraView.Unity
         private void PublishContext()
         {
             if (!NativeReady) return;
-            var response = JsonUtility.FromJson<CallSuccess>(SceneContracts.Dispatch("{\"type\":\"call\",\"id\":\"selection\",\"method\":\"scene.context\"}"));
-            view.Evaluate("window.auroraview.trigger('scene.selection'," + JsonUtility.ToJson(response.result) + ");");
+            var context = SceneContracts.ReadContext();
+            view.Evaluate("window.auroraview.trigger('scene.selection'," + JsonUtility.ToJson(context) + ");");
         }
     }
 }

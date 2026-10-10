@@ -16,7 +16,7 @@ test:
     vx just test-editor-owner
 
 test-editor-owner:
-    New-Item -ItemType Directory -Force -Path 'build~/owner-check' | Out-Null; $check = Join-Path $PWD 'build~/owner-check/EditorOwnerCheck.exe'; vx uv run --offline --no-project --no-sync -- 'C:/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe' /nologo /warnaserror+ "/out:$check" (Join-Path $PWD 'Editor/EditorOwner.cs') (Join-Path $PWD 'Editor/OwnedEditorExit.cs') (Join-Path $PWD 'tests~/EditorOwnerCheck.cs'); if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; vx uv run --offline --no-project --no-sync -- $check -projectPath (Join-Path $PWD 'owned-project') -auroraviewOwnedTest ('a' * 32); exit $LASTEXITCODE
+    New-Item -ItemType Directory -Force -Path 'build~/owner-check' | Out-Null; $check = Join-Path $PWD 'build~/owner-check/EditorOwnerCheck.exe'; vx uv run --offline --no-project --no-sync -- 'C:/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe' /nologo /warnaserror+ /r:System.Web.Extensions.dll "/out:$check" (Join-Path $PWD 'Editor/EditorOwner.cs') (Join-Path $PWD 'Editor/EditorStatus.cs') (Join-Path $PWD 'Editor/ContextResponse.cs') (Join-Path $PWD 'Editor/SceneContracts.cs') (Join-Path $PWD 'Editor/OwnedEditorExit.cs') (Join-Path $PWD 'tests~/EditorOwnerCheck.cs'); if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; vx uv run --offline --no-project --no-sync -- $check -projectPath (Join-Path $PWD 'owned-project') -auroraviewOwnedTest ('a' * 32); exit $LASTEXITCODE
 
 core-env:
     powershell.exe -NoProfile -File scripts/core-env.ps1
@@ -64,3 +64,6 @@ check: test test-core test-core-service test-core-http
 
 package: test-native
     powershell.exe -NoProfile -File scripts/package.ps1
+
+test-node version='22.23.3':
+    vx node@{{version}} --test tests/agent.test.mjs
